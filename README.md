@@ -70,3 +70,4 @@ Place your PNG files in the `public` folder and update the components to referen
 ## Browser Compatibility
 
 Voice Recognition works best in Chrome, Edge, and Safari.
+# hospital-navigation-system
