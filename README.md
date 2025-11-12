@@ -1,36 +1,72 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Hospital Navigation System
+
+A comprehensive healthcare navigation system with voice recognition and interactive mapping features built with Next.js and Tailwind CSS.
+
+## Features
+
+### 1. Landing Page
+- Welcome section with hospital statistics
+- Hospital floor plan preview with zoom functionality
+- Quick access to all major sections
+
+### 2. Voice Assistant
+- **Voice Recognition**: Uses Web Speech API for browser-based voice recognition
+- **Floor Plan Navigation**: Voice commands to navigate to different departments
+- **Real-time Transcription**: See what you say in real-time
+- **Voice Response**: Text-to-speech responses for guided navigation
+- **Command History**: Track your navigation queries
+
+#### Supported Voice Commands:
+- "Where is the Emergency Room?"
+- "Take me to Cardiology"
+- "Where is the pharmacy?"
+- "Find the nearest restroom"
+- "Where can I park?"
+- "Show me the cafeteria"
+- "Where is Radiology?"
+- "How do I make an appointment?"
+
+### 3. Quick Access Services
+Six essential services with detailed information:
+- **Emergency Services** - 24/7 emergency care
+- **Appointments** - Schedule and manage appointments
+- **Parking Information** - Parking facilities and access
+- **Contact Information** - General inquiries and directory
+- **Accessibility Services** - Support for special needs
+- **Pharmacy** - Prescription and medical supplies
+
+### 4. Interactive Hospital Map
+- **Multi-floor Navigation**: Browse different hospital floors
+- **Zoom Controls**: Zoom in/out for detailed viewing
+- **Map Legend**: Color-coded department identification
+- **Quick Navigation**: Shortcut buttons for common destinations
+- **Interactive Markers**: Clickable location markers (ready for customization)
+
+### 5. Department Directory
+Complete directory with 8 major departments including Emergency Medicine, Cardiology, Neurology, Pediatrics, Orthopedics, Ophthalmology, Internal Medicine, and Pharmacy Services.
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
+cd "Hospital track"
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) in your browser
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Adding Your Hospital Floor Plans
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Place your PNG files in the `public` folder and update the components to reference them.
 
-## Learn More
+## Technology Stack
 
-To learn more about Next.js, take a look at the following resources:
+- **Framework**: Next.js 15 with App Router
+- **Styling**: Tailwind CSS
+- **Icons**: Lucide React
+- **Voice Recognition**: Web Speech API (Browser-native)
+- **Language**: TypeScript
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Browser Compatibility
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Voice Recognition works best in Chrome, Edge, and Safari.
