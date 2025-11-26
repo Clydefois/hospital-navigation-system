@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { MapPin, ZoomIn, ZoomOut, AlertCircle } from 'lucide-react';
-import { Stage, Layer, Image as KonvaImage, Circle } from 'react-konva';
+import { Stage, Layer, Image as KonvaImage, Circle, Line, Arrow } from 'react-konva';
 import useImage from 'use-image';
 import type Konva from 'konva';
 
@@ -19,6 +19,7 @@ interface InteractiveMapGPSProps {
   isDarkMode?: boolean;
   fullScreen?: boolean;
   selectedLocationId?: string;
+  onDistanceUpdate?: (distance: number) => void;
 }
 
 // Real GPS coordinates from Google Maps: 6.910139503770937, 122.07512615988898
@@ -68,7 +69,7 @@ function FloorPlanImage({ src }: { src: string }) {
   return <KonvaImage image={image} width={FLOOR_PLAN_WIDTH} height={FLOOR_PLAN_HEIGHT} />;
 }
 
-export default function InteractiveMapGPS({ isDarkMode = false, fullScreen = false, selectedLocationId }: InteractiveMapGPSProps) {
+export default function InteractiveMapGPS({ isDarkMode = false, fullScreen = false, selectedLocationId, onDistanceUpdate }: InteractiveMapGPSProps) {
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
   const [zoom, setZoom] = useState(1);
   const [userPosition, setUserPosition] = useState<{ x: number; y: number } | null>(null);
@@ -217,6 +218,19 @@ export default function InteractiveMapGPS({ isDarkMode = false, fullScreen = fal
       }, 0);
     }
   }, [selectedLocation, fullScreen]);
+
+  // Calculate and update distance when user position or selected location changes
+  useEffect(() => {
+    if (userPosition && selectedLocation && onDistanceUpdate) {
+      const dx = selectedLocation.x - userPosition.x;
+      const dy = selectedLocation.y - userPosition.y;
+      const pixelDistance = Math.sqrt(dx * dx + dy * dy);
+      
+      // Approximate: 100 pixels ≈ 10 meters in this floor plan
+      const metersDistance = (pixelDistance / 100) * 10;
+      onDistanceUpdate(metersDistance);
+    }
+  }, [userPosition, selectedLocation, onDistanceUpdate]);
 
   useEffect(() => {
     return () => {
@@ -401,6 +415,55 @@ export default function InteractiveMapGPS({ isDarkMode = false, fullScreen = fal
                   >
                     <Layer>
                       <FloorPlanImage src="/HospitalFloorPlan.png" />
+                      
+                      {/* Navigation path - draw line from user to destination */}
+                      {userPosition && selectedLocation && (
+                        <>
+                          <Line
+                            points={[userPosition.x, userPosition.y, selectedLocation.x, selectedLocation.y]}
+                            stroke="#a855f7"
+                            strokeWidth={6}
+                            lineCap="round"
+                            lineJoin="round"
+                            dash={[20, 10]}
+                            shadowBlur={10}
+                            shadowColor="#a855f7"
+                            shadowOpacity={0.5}
+                          />
+                          <Arrow
+                            points={[userPosition.x, userPosition.y, selectedLocation.x, selectedLocation.y]}
+                            stroke="#8b5cf6"
+                            fill="#8b5cf6"
+                            strokeWidth={4}
+                            pointerLength={20}
+                            pointerWidth={20}
+                          />
+                        </>
+                      )}
+                      
+                      {/* Destination marker */}
+                      {selectedLocation && (
+                        <>
+                          <Circle
+                            x={selectedLocation.x}
+                            y={selectedLocation.y}
+                            radius={30}
+                            fill={selectedLocation.color}
+                            opacity={0.2}
+                          />
+                          <Circle
+                            x={selectedLocation.x}
+                            y={selectedLocation.y}
+                            radius={15}
+                            fill={selectedLocation.color}
+                            stroke="#ffffff"
+                            strokeWidth={4}
+                            shadowBlur={15}
+                            shadowColor={selectedLocation.color}
+                            shadowOpacity={0.6}
+                          />
+                        </>
+                      )}
                       
                       {/* User position marker */}
                       {userPosition && (

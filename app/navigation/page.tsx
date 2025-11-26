@@ -30,6 +30,7 @@ export default function NavigationPage() {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
+  const [distance, setDistance] = useState<number | null>(null);
 
   const requestLocation = () => {
     if (!navigator.geolocation) {
@@ -295,6 +296,7 @@ export default function NavigationPage() {
           isDarkMode={false} 
           fullScreen 
           selectedLocationId={isNavigating ? selectedDestination?.id : undefined}
+          onDistanceUpdate={setDistance}
         />
       </div>
 
@@ -357,11 +359,15 @@ export default function NavigationPage() {
               <div className="grid grid-cols-2 gap-2 sm:gap-3">
                 <div className="bg-blue-50 rounded-xl p-2 sm:p-3">
                   <p className="text-[10px] sm:text-xs text-blue-600 mb-0.5 sm:mb-1">Distance</p>
-                  <p className="text-sm sm:text-lg font-bold text-blue-900">Calculating...</p>
+                  <p className="text-sm sm:text-lg font-bold text-blue-900">
+                    {distance !== null ? `${distance.toFixed(1)}m` : 'Calculating...'}
+                  </p>
                 </div>
                 <div className="bg-green-50 rounded-xl p-2 sm:p-3">
                   <p className="text-[10px] sm:text-xs text-green-600 mb-0.5 sm:mb-1">ETA</p>
-                  <p className="text-sm sm:text-lg font-bold text-green-900">~2 min</p>
+                  <p className="text-sm sm:text-lg font-bold text-green-900">
+                    {distance !== null ? `~${Math.ceil(distance / 1.4)}s` : '~2 min'}
+                  </p>
                 </div>
               </div>
             </div>
