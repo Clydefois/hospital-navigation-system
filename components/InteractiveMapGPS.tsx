@@ -79,6 +79,8 @@ export default function InteractiveMapGPS({ isDarkMode = false, fullScreen = fal
   const watchIdRef = useRef<number | null>(null);
   const stageRef = useRef<Konva.Stage | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const lastCenterRef = useRef<{ x: number; y: number } | null>(null);
+  const lastDistRef = useRef(0);
 
   useEffect(() => {
     const updateSize = () => {
@@ -222,6 +224,61 @@ export default function InteractiveMapGPS({ isDarkMode = false, fullScreen = fal
     };
   }, []);
 
+  // Touch handlers for pinch-to-zoom
+  const handleTouchMove = (e: Konva.KonvaEventObject<TouchEvent>) => {
+    if (!fullScreen) return;
+    
+    const touch1 = e.evt.touches[0];
+    const touch2 = e.evt.touches[1];
+    const stage = stageRef.current;
+
+    if (!stage) return;
+
+    if (touch1 && touch2) {
+      // Multi-touch: pinch to zoom
+      e.evt.preventDefault();
+
+      const p1 = { x: touch1.clientX, y: touch1.clientY };
+      const p2 = { x: touch2.clientX, y: touch2.clientY };
+
+      const dist = Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
+      const center = {
+        x: (p1.x + p2.x) / 2,
+        y: (p1.y + p2.y) / 2,
+      };
+
+      if (!lastCenterRef.current) {
+        lastCenterRef.current = center;
+        lastDistRef.current = dist;
+        return;
+      }
+
+      const pointTo = {
+        x: (center.x - stage.x()) / zoom,
+        y: (center.y - stage.y()) / zoom,
+      };
+
+      const scale = dist / lastDistRef.current;
+      const newZoom = Math.max(0.5, Math.min(3, zoom * scale));
+
+      const newPos = {
+        x: center.x - pointTo.x * newZoom,
+        y: center.y - pointTo.y * newZoom,
+      };
+
+      setZoom(newZoom);
+      setStagePos(newPos);
+
+      lastDistRef.current = dist;
+      lastCenterRef.current = center;
+    }
+  };
+
+  const handleTouchEnd = () => {
+    lastCenterRef.current = null;
+    lastDistRef.current = 0;
+  };
+
   return (
     <div className={fullScreen ? "w-full h-full relative" : "w-full relative px-3 md:px-6 pb-6 md:pb-8"}>
       {/* Minimalist Container */}
@@ -300,6 +357,8 @@ export default function InteractiveMapGPS({ isDarkMode = false, fullScreen = fal
                         y: e.target.y(),
                       });
                     }}
+                    onTouchMove={handleTouchMove}
+                    onTouchEnd={handleTouchEnd}
                   >
                     <Layer>
                       <FloorPlanImage src="/HospitalFloorPlan.png" />
