@@ -73,6 +73,7 @@ export default function InteractiveMapGPS({ isDarkMode = false, fullScreen = fal
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
   const [zoom, setZoom] = useState(1);
   const [userPosition, setUserPosition] = useState<{ x: number; y: number } | null>(null);
+  const [userHeading, setUserHeading] = useState<number>(0);
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
   const [gpsError, setGpsError] = useState<string | null>(null);
   const [isTracking, setIsTracking] = useState(false);
@@ -96,6 +97,21 @@ export default function InteractiveMapGPS({ isDarkMode = false, fullScreen = fal
     updateSize();
     window.addEventListener('resize', updateSize);
     return () => window.removeEventListener('resize', updateSize);
+  }, []);
+
+  // Track device orientation for compass heading
+  useEffect(() => {
+    const handleOrientation = (event: DeviceOrientationEvent) => {
+      if (event.alpha !== null) {
+        // alpha is the compass direction (0-360 degrees)
+        setUserHeading(event.alpha);
+      }
+    };
+
+    if (window.DeviceOrientationEvent) {
+      window.addEventListener('deviceorientation', handleOrientation);
+      return () => window.removeEventListener('deviceorientation', handleOrientation);
+    }
   }, []);
 
   const startTracking = () => {
@@ -466,26 +482,45 @@ export default function InteractiveMapGPS({ isDarkMode = false, fullScreen = fal
                         </>
                       )}
                       
-                      {/* User position marker */}
+                      {/* User position marker with compass */}
                       {userPosition && (
                         <>
+                          {/* Outer glow circle */}
                           <Circle
                             x={userPosition.x}
                             y={userPosition.y}
-                            radius={25}
-                            fill="#22c55e"
-                            opacity={0.2}
+                            radius={18}
+                            fill="#3b82f6"
+                            opacity={0.15}
                           />
+                          {/* Main blue dot */}
                           <Circle
                             x={userPosition.x}
                             y={userPosition.y}
-                            radius={12}
-                            fill="#22c55e"
+                            radius={8}
+                            fill="#3b82f6"
                             stroke="#ffffff"
-                            strokeWidth={4}
-                            shadowBlur={15}
-                            shadowColor="#22c55e"
-                            shadowOpacity={0.6}
+                            strokeWidth={3}
+                            shadowBlur={10}
+                            shadowColor="#3b82f6"
+                            shadowOpacity={0.7}
+                          />
+                          {/* Compass direction arrow */}
+                          <Arrow
+                            points={[
+                              userPosition.x,
+                              userPosition.y,
+                              userPosition.x + Math.sin((userHeading * Math.PI) / 180) * 25,
+                              userPosition.y - Math.cos((userHeading * Math.PI) / 180) * 25,
+                            ]}
+                            stroke="#3b82f6"
+                            fill="#3b82f6"
+                            strokeWidth={3}
+                            pointerLength={8}
+                            pointerWidth={8}
+                            shadowBlur={5}
+                            shadowColor="#3b82f6"
+                            shadowOpacity={0.5}
                           />
                         </>
                       )}
