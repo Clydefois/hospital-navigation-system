@@ -31,18 +31,43 @@ export default function NavigationPage() {
   const [isNavigating, setIsNavigating] = useState(false);
 
   const requestLocation = () => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        () => {
-          setLocationGranted(true);
-        },
-        () => {
-          alert('Location access denied. Please enable location services.');
-        }
-      );
-    } else {
+    if (!navigator.geolocation) {
       alert('Geolocation is not supported by your browser.');
+      return;
     }
+
+    // iOS Safari specific handling
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        console.log('Location granted:', position.coords);
+        setLocationGranted(true);
+      },
+      (error) => {
+        console.error('Geolocation error:', error);
+        let errorMessage = 'Location access denied. ';
+        
+        switch(error.code) {
+          case error.PERMISSION_DENIED:
+            errorMessage += 'Please enable location access in Settings > Safari > Location Services.';
+            break;
+          case error.POSITION_UNAVAILABLE:
+            errorMessage += 'Location information is unavailable.';
+            break;
+          case error.TIMEOUT:
+            errorMessage += 'Location request timed out.';
+            break;
+          default:
+            errorMessage += 'An unknown error occurred.';
+        }
+        
+        alert(errorMessage);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0
+      }
+    );
   };
 
   const startNavigation = () => {
