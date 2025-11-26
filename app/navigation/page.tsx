@@ -29,10 +29,19 @@ export default function NavigationPage() {
   const [selectedDestination, setSelectedDestination] = useState<typeof locations[0] | null>(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
 
   const requestLocation = () => {
     if (!navigator.geolocation) {
-      alert('Geolocation is not supported by your browser.');
+      setLocationError('Geolocation is not supported by your browser.');
+      return;
+    }
+
+    // Check if we're on HTTPS or localhost
+    const isSecureContext = window.isSecureContext || window.location.hostname === 'localhost';
+    
+    if (!isSecureContext) {
+      setLocationError('Geolocation requires HTTPS. Please use https://zcmedicalcenter.netlify.app or skip to manual selection.');
       return;
     }
 
@@ -41,6 +50,7 @@ export default function NavigationPage() {
       (position) => {
         console.log('Location granted:', position.coords);
         setLocationGranted(true);
+        setLocationError(null);
       },
       (error) => {
         console.error('Geolocation error:', error);
@@ -48,7 +58,7 @@ export default function NavigationPage() {
         
         switch(error.code) {
           case error.PERMISSION_DENIED:
-            errorMessage += 'Please enable location access in Settings > Safari > Location Services.';
+            errorMessage += 'Please enable location in Settings > Safari > Location Services, or skip to manual selection.';
             break;
           case error.POSITION_UNAVAILABLE:
             errorMessage += 'Location information is unavailable.';
@@ -60,7 +70,7 @@ export default function NavigationPage() {
             errorMessage += 'An unknown error occurred.';
         }
         
-        alert(errorMessage);
+        setLocationError(errorMessage);
       },
       {
         enableHighAccuracy: true,
@@ -68,6 +78,11 @@ export default function NavigationPage() {
         maximumAge: 0
       }
     );
+  };
+
+  const skipLocation = () => {
+    setLocationGranted(true);
+    setLocationError(null);
   };
 
   const startNavigation = () => {
@@ -123,12 +138,34 @@ export default function NavigationPage() {
               we need access to your device&apos;s location.
             </p>
             
-            <button
-              onClick={requestLocation}
-              className="w-full bg-linear-to-r from-orange-500 to-yellow-500 hover:from-orange-600 hover:to-yellow-600 text-white font-bold py-3 sm:py-4 px-4 sm:px-6 rounded-full transition-all transform hover:scale-105 shadow-lg text-sm sm:text-base"
-            >
-              USE MY LOCATION
-            </button>
+            {locationError && (
+              <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p className="text-xs text-yellow-800 leading-relaxed">{locationError}</p>
+              </div>
+            )}
+            
+            <div className="space-y-3">
+              <button
+                onClick={requestLocation}
+                className="w-full bg-linear-to-r from-orange-500 to-yellow-500 hover:from-orange-600 hover:to-yellow-600 text-white font-bold py-3 sm:py-4 px-4 sm:px-6 rounded-full transition-all transform hover:scale-105 shadow-lg text-sm sm:text-base"
+              >
+                USE MY LOCATION
+              </button>
+              
+              <button
+                onClick={skipLocation}
+                className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-3 sm:py-4 px-4 sm:px-6 rounded-full transition-all text-sm sm:text-base"
+              >
+                SKIP - SELECT MANUALLY
+              </button>
+              
+              <p className="text-xs text-gray-500 mt-2">
+                Note: GPS navigation requires HTTPS. For full features, visit{' '}
+                <a href="https://zcmedicalcenter.netlify.app" className="text-blue-600 underline">
+                  zcmedicalcenter.netlify.app
+                </a>
+              </p>
+            </div>
           </div>
         </motion.div>
       </div>
