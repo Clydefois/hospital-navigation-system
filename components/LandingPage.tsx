@@ -1,15 +1,20 @@
 'use client';
 
-import React from 'react';
-import VoiceAssistant from './VoiceAssistant';
+import React, { useEffect, useState } from 'react';
+import VoiceAssistantModal from './VoiceAssistantModal';
 import QuickAccessServices from './QuickAccessServices';
-import InteractiveMap from './InteractiveMap';
 import DepartmentDirectory from './DepartmentDirectory';
 import FloatingChat from './FloatingChat';
 import { Mic, MapPin, Sparkles, HeartPulse } from 'lucide-react';
 import { motion } from 'framer-motion';
+import gsap from 'gsap';
+import { ScrollTrigger } from 'gsap/ScrollTrigger';
+
+gsap.registerPlugin(ScrollTrigger);
 
 export default function LandingPage() {
+  const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
+
   const scrollToSection = (sectionId: string) => {
     const element = document.getElementById(sectionId);
     if (element) {
@@ -17,10 +22,55 @@ export default function LandingPage() {
     }
   };
 
+  useEffect(() => {
+    // Pinning scroll effect for hero section
+    const heroSection = document.getElementById('home');
+    if (heroSection) {
+      ScrollTrigger.create({
+        trigger: heroSection,
+        start: 'top top',
+        end: '+=500',
+        pin: true,
+        pinSpacing: false,
+        scrub: 1,
+      });
+    }
+
+    // Smooth fade-in animations for each section
+    const sections = gsap.utils.toArray<HTMLElement>('section');
+    
+    sections.forEach((section, index) => {
+      if (index > 0) { // Skip hero section
+        gsap.fromTo(section, 
+          { 
+            opacity: 0,
+            y: 50 
+          },
+          {
+            opacity: 1,
+            y: 0,
+            duration: 1,
+            ease: 'power2.out',
+            scrollTrigger: {
+              trigger: section,
+              start: 'top 80%',
+              end: 'top 50%',
+              scrub: 1,
+            }
+          }
+        );
+      }
+    });
+
+    return () => {
+      ScrollTrigger.getAll().forEach(trigger => trigger.kill());
+    };
+  }, []);
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-white">
+    <div className="min-h-screen">
       {/* Section 1: Landing Page / Hero */}
-      <section id="home" className="relative min-h-screen flex flex-col overflow-hidden">
+      <section id="home" data-bg-color="#f1f5f9" className="relative min-h-screen flex flex-col overflow-hidden transition-all duration-1000 bg-slate-100 bg-[radial-gradient(circle_at_20%_30%,rgba(59,130,246,0.12)_0%,transparent_50%),radial-gradient(circle_at_80%_70%,rgba(99,102,241,0.08)_0%,transparent_50%),radial-gradient(circle_at_50%_50%,rgba(147,197,253,0.06)_0%,transparent_50%)]">
         {/* Hero Section with Background Image */}
         <div className="relative flex-1 flex items-center justify-center">
           {/* Background Image with Overlay */}
@@ -30,8 +80,8 @@ export default function LandingPage() {
               backgroundImage: 'url(/hospital-background.jpeg)',
             }}
           >
-            {/* Gradient overlay - Health colors: Blue and Red */}
-            <div className="absolute inset-0 bg-gradient-to-br from-blue-900/75 via-blue-800/65 to-red-900/70"></div>
+            {/* Dark overlay for contrast */}
+            <div className="absolute inset-0 bg-slate-900/80"></div>
           </div>
 
           {/* Content */}
@@ -47,20 +97,20 @@ export default function LandingPage() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.5, duration: 0.8 }}
-              className="text-6xl md:text-8xl font-bold text-white mb-6 drop-shadow-2xl leading-tight"
+              className="lg:text-8xl md:text-8xl font-bold text-white mb-6 drop-shadow-2xl leading-tight"
               style={{ fontFamily: 'LemonJelly, cursive' }}
             >
-              Zamboanga<br/>Medical Center
+              Zamboanga Medical Center
             </motion.h1>
             
-            <motion.div
+            <motion.div 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.7, duration: 0.8 }}
               className="space-y-3 mb-12"
             >
               <h2 className="text-3xl md:text-4xl text-white drop-shadow-lg" style={{ fontFamily: 'Stack Sans, sans-serif', fontWeight: 900 }}>
-                Advanced Healthcare Navigation System
+                Navigation System
               </h2>
               <p className="text-xl md:text-2xl text-white/90 flex items-center justify-center gap-2" style={{ fontFamily: 'Stack Sans, sans-serif', fontWeight: 400 }}>
                 <HeartPulse className="text-red-400" size={28} />
@@ -76,8 +126,8 @@ export default function LandingPage() {
               className="flex flex-col sm:flex-row gap-4 max-w-2xl mx-auto"
             >
               <button
-                onClick={() => scrollToSection('voice-assistant')}
-                className="group relative flex-1 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-bold py-5 px-8 rounded-2xl overflow-hidden hover:scale-105 transition-all duration-300 shadow-2xl glow"
+                onClick={() => setIsVoiceModalOpen(true)}
+                className="group relative flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-5 px-8 rounded-2xl overflow-hidden hover:scale-105 transition-all duration-300 shadow-2xl backdrop-blur-xl cursor-pointer"
                 style={{ fontFamily: 'Stack Sans, sans-serif', fontWeight: 700 }}
               >
                 <div className="relative flex items-center justify-center gap-3 text-lg">
@@ -88,7 +138,7 @@ export default function LandingPage() {
               
               <button
                 onClick={() => scrollToSection('interactive-map')}
-                className="group relative flex-1 glass text-white font-bold py-5 px-8 rounded-2xl border-2 border-white/40 hover:border-white/60 hover:scale-105 transition-all duration-300"
+                className="group relative flex-1 glass text-white font-bold py-5 px-8 rounded-2xl border-2 border-white/40 hover:border-white/60 hover:scale-105 transition-all duration-300 cursor-pointer"
                 style={{ fontFamily: 'Stack Sans, sans-serif', fontWeight: 600 }}
               >
                 <div className="relative flex items-center justify-center gap-3 text-lg">
@@ -103,41 +153,31 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Section 2: Voice Assistant */}
-      <section id="voice-assistant" className="min-h-screen py-20 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-blue-50 via-white to-slate-50"></div>
+      {/* Voice Assistant Modal */}
+      <VoiceAssistantModal 
+        isOpen={isVoiceModalOpen} 
+        onClose={() => setIsVoiceModalOpen(false)} 
+      />
+
+      {/* Section 2: Quick Access Services */}
+      <section id="quick-access" className="min-h-screen py-20 relative overflow-hidden bg-linear-to-b from-white to-blue-50">
+        <div className="absolute inset-0 bg-[radial-gradient(circle,rgba(59,130,246,0.08)_1px,transparent_1px)] bg-size-[24px_24px]"></div>
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <VoiceAssistant />
+          <QuickAccessServices onOpenVoiceModal={() => setIsVoiceModalOpen(true)} />
         </div>
       </section>
 
-      {/* Section 3: Quick Access Services */}
-      <section id="quick-access" className="min-h-screen py-20 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-blue-50 to-white"></div>
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <QuickAccessServices />
-        </div>
-      </section>
-
-      {/* Section 4: Interactive Hospital Map */}
-      <section id="interactive-map" className="min-h-screen py-20 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-white via-blue-50 to-slate-50"></div>
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <InteractiveMap />
-        </div>
-      </section>
-
-      {/* Section 5: Department Directory */}
-      <section id="departments" className="min-h-screen py-20 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-blue-50 via-slate-50 to-white"></div>
+      {/* Section 3: Department Directory */}
+      <section id="departments" className="min-h-screen py-20 relative overflow-hidden bg-linear-to-b from-blue-50 to-white">
+        <div className="absolute inset-0" style={{backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 35px, rgba(59, 130, 246, 0.02) 35px, rgba(59, 130, 246, 0.02) 70px)'}}></div>
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <DepartmentDirectory />
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="relative py-16 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-blue-900 to-red-900"></div>
+      <footer className="relative py-16 overflow-hidden transition-all duration-1000 bg-slate-900">
+        <div className="absolute inset-0"></div>
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center">
             <motion.div

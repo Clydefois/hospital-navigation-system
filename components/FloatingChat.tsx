@@ -1,10 +1,10 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageCircle, X, Send, Mic, MapPin } from 'lucide-react';
+import { X, Send, Mic, MapPin } from 'lucide-react';
 
 interface Message {
-  id: number;
+  id: string;
   text: string;
   sender: 'user' | 'bot';
   timestamp: Date;
@@ -14,7 +14,7 @@ export default function FloatingChat() {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     {
-      id: 1,
+      id: '1',
       text: "Hello! I'm your hospital navigation assistant. How can I help you find your way today?",
       sender: 'bot',
       timestamp: new Date(),
@@ -23,6 +23,7 @@ export default function FloatingChat() {
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messageIdCounter = useRef(0);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -44,9 +45,12 @@ export default function FloatingChat() {
   const handleSendMessage = (text: string) => {
     if (!text.trim()) return;
 
+    // Generate unique ID using counter
+    messageIdCounter.current += 1;
+
     // Add user message
     const userMessage: Message = {
-      id: Date.now(),
+      id: `user-${messageIdCounter.current}`,
       text: text,
       sender: 'user',
       timestamp: new Date(),
@@ -58,9 +62,10 @@ export default function FloatingChat() {
 
     // Simulate bot response
     setTimeout(() => {
+      messageIdCounter.current += 1;
       const botResponse = getBotResponse(text);
       const botMessage: Message = {
-        id: Date.now() + 1,
+        id: `bot-${messageIdCounter.current}`,
         text: botResponse,
         sender: 'bot',
         timestamp: new Date(),
@@ -107,7 +112,7 @@ export default function FloatingChat() {
       {/* Floating Chat Button with Text */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className={`fixed bottom-6 right-6 z-50 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-full shadow-2xl transition-all transform hover:scale-105 glow group ${
+        className={`fixed bottom-6 right-6 z-50 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-2xl transition-all transform hover:scale-105 backdrop-blur-xl group ${
           isOpen ? 'rotate-0' : ''
         }`}
         aria-label="Talk with us"
@@ -128,9 +133,9 @@ export default function FloatingChat() {
 
       {/* Chat Window */}
       {isOpen && (
-        <div className="fixed bottom-28 right-6 z-50 w-96 max-w-[calc(100vw-3rem)] h-[600px] max-h-[calc(100vh-8rem)] glass-strong rounded-3xl shadow-2xl flex flex-col overflow-hidden backdrop-blur-xl border border-white/30 animate-in slide-in-from-bottom-5 duration-300">
+        <div className="fixed bottom-28 right-6 z-50 w-96 max-w-[calc(100vw-3rem)] h-[600px] max-h-[calc(100vh-8rem)] glass-strong rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom-5 duration-300">
           {/* Chat Header */}
-          <div className="bg-gradient-to-r from-blue-600/90 via-blue-700/90 to-red-600/90 backdrop-blur-lg text-white p-5 flex items-center justify-between shadow-lg">
+          <div className="bg-blue-600 backdrop-blur-lg text-white p-5 flex items-center justify-between shadow-lg">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 glass rounded-full flex items-center justify-center ring-2 ring-white/30">
                 <MapPin size={22} className="animate-pulse" />
@@ -152,7 +157,7 @@ export default function FloatingChat() {
           </div>
 
           {/* Messages Container */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gradient-to-b from-gray-50/80 to-white/80 backdrop-blur-sm">
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/90 backdrop-blur-sm">
             {messages.map((message) => (
               <div
                 key={message.id}
@@ -163,8 +168,8 @@ export default function FloatingChat() {
                 <div
                   className={`max-w-[80%] rounded-2xl px-4 py-2 transition-all duration-300 hover:scale-[1.02] ${
                     message.sender === 'user'
-                      ? 'bg-gradient-to-br from-blue-600 to-red-600 text-white rounded-br-sm shadow-lg'
-                      : 'glass text-gray-800 rounded-bl-sm shadow-md border border-white/20'
+                      ? 'bg-blue-600 text-white rounded-br-sm shadow-lg'
+                      : 'glass text-gray-800 rounded-bl-sm shadow-md'
                   }`}
                 >
                   <p className="text-sm leading-relaxed">{message.text}</p>
@@ -186,11 +191,11 @@ export default function FloatingChat() {
 
             {isTyping && (
               <div className="flex justify-start">
-                <div className="glass text-gray-800 rounded-2xl rounded-bl-sm shadow-md px-4 py-3 border border-white/20">
+                <div className="glass text-gray-800 rounded-2xl rounded-bl-sm shadow-md px-4 py-3">
                   <div className="flex gap-1">
-                    <div className="w-2 h-2 bg-gradient-to-r from-blue-600 to-red-600 rounded-full animate-bounce"></div>
-                    <div className="w-2 h-2 bg-gradient-to-r from-red-600 to-blue-600 rounded-full animate-bounce delay-100"></div>
-                    <div className="w-2 h-2 bg-gradient-to-r from-blue-500 to-red-500 rounded-full animate-bounce delay-200"></div>
+                    <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce"></div>
+                    <div className="w-2 h-2 bg-slate-600 rounded-full animate-bounce delay-100"></div>
+                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce delay-200"></div>
                   </div>
                 </div>
               </div>
@@ -210,7 +215,7 @@ export default function FloatingChat() {
                   <button
                     key={index}
                     onClick={() => handleQuickReply(reply)}
-                    className="text-xs glass hover:glass-strong hover:scale-105 bg-gradient-to-r from-blue-600/10 to-red-600/10 text-blue-700 px-3 py-1.5 rounded-full transition-all duration-300 border border-blue-200/30 shadow-sm"
+                    className="text-xs glass hover:glass-strong hover:scale-105 bg-blue-50 text-blue-700 px-3 py-1.5 rounded-full transition-all duration-300 border border-blue-200/30 shadow-sm backdrop-blur-xl"
                   >
                     {reply}
                   </button>
@@ -220,7 +225,7 @@ export default function FloatingChat() {
           )}
 
           {/* Input Area */}
-          <div className="p-4 glass-strong border-t border-white/20">
+          <div className="p-4 glass-strong border-t border-white/10">
             <div className="flex gap-2">
               <input
                 type="text"
@@ -232,12 +237,12 @@ export default function FloatingChat() {
                   }
                 }}
                 placeholder="Ask about locations..."
-                className="flex-1 px-4 py-2 glass border border-white/30 rounded-full focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-sm text-gray-800 placeholder:text-gray-500 transition-all duration-300"
+                className="flex-1 px-4 py-2 glass rounded-full focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-400/30 text-sm text-gray-800 placeholder:text-gray-500 transition-all duration-300"
               />
               <button
                 onClick={() => handleSendMessage(inputText)}
                 disabled={!inputText.trim()}
-                className="bg-gradient-to-br from-blue-600 to-red-600 hover:from-blue-700 hover:to-red-700 text-white p-2 rounded-full transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl hover:scale-105 glow-hover"
+                className="bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-full transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl hover:scale-105 backdrop-blur-xl"
               >
                 <Send size={20} />
               </button>

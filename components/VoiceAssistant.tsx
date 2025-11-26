@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Mic, MicOff, Volume2, Loader2, MessageSquare, Sparkles, StopCircle } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Mic, MicOff, Volume2, Loader2, MessageSquare, StopCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface VoiceCommand {
@@ -10,76 +10,65 @@ interface VoiceCommand {
   response: string;
 }
 
+// TypeScript interfaces for Web Speech API
+interface SpeechRecognitionEvent extends Event {
+  resultIndex: number;
+  results: SpeechRecognitionResultList;
+}
+
+interface SpeechRecognitionErrorEvent extends Event {
+  error: string;
+}
+
+interface SpeechRecognition extends EventTarget {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start: () => void;
+  stop: () => void;
+  onresult: (event: SpeechRecognitionEvent) => void;
+  onerror: (event: SpeechRecognitionErrorEvent) => void;
+  onend: () => void;
+}
+
+declare global {
+  interface Window {
+    SpeechRecognition: new () => SpeechRecognition;
+    webkitSpeechRecognition: new () => SpeechRecognition;
+  }
+}
+
 export default function VoiceAssistant() {
   const [isListening, setIsListening] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [commands, setCommands] = useState<VoiceCommand[]>([]);
-  const [recognition, setRecognition] = useState<any>(null);
+  const [recognition, setRecognition] = useState<SpeechRecognition | null>(null);
   const [browserSupported, setBrowserSupported] = useState(true);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [selectedVoice, setSelectedVoice] = useState<SpeechSynthesisVoice | null>(null);
-  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
 
-  useEffect(() => {
-    // Check if browser supports Web Speech API
-    if (typeof window !== 'undefined') {
-      const SpeechRecognition = 
-        (window as any).SpeechRecognition || 
-        (window as any).webkitSpeechRecognition;
-
-      if (SpeechRecognition) {
-        const recognitionInstance = new SpeechRecognition();
-        recognitionInstance.continuous = true;
-        recognitionInstance.interimResults = true;
-        recognitionInstance.lang = 'en-US';
-
-        recognitionInstance.onresult = (event: any) => {
-          const current = event.resultIndex;
-          const transcriptText = event.results[current][0].transcript;
-          setTranscript(transcriptText);
-
-          if (event.results[current].isFinal) {
-            processVoiceCommand(transcriptText);
-          }
-        };
-
-        recognitionInstance.onerror = (event: any) => {
-          console.error('Speech recognition error:', event.error);
-          setIsListening(false);
-        };
-
-        recognitionInstance.onend = () => {
-          setIsListening(false);
-        };
-
-        setRecognition(recognitionInstance);
-      } else {
-        setBrowserSupported(false);
+  // Speak response function using useCallback
+  const speakResponse = useCallback((text: string) => {
+    if ('speechSynthesis' in window) {
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 1.0;
+      utterance.pitch = 1.0;
+      utterance.volume = 1;
+      if (selectedVoice) {
+        utterance.voice = selectedVoice;
       }
-
-      // Load available voices and set a male voice as default
-      const loadVoices = () => {
-        const voices = window.speechSynthesis.getVoices();
-        setAvailableVoices(voices);
-        // Try to find common male voices: Daniel, Google US English, Fred, etc.
-        const maleVoice = voices.find(v => 
-          v.name.toLowerCase().includes('daniel') ||
-          v.name.toLowerCase().includes('fred') ||
-          v.name.toLowerCase().includes('google us english') ||
-          (v.name.toLowerCase().includes('male') && v.lang.startsWith('en'))
-        );
-        const englishVoice = voices.find(v => v.lang.startsWith('en'));
-        const defaultVoice = maleVoice || englishVoice || voices[0];
-        setSelectedVoice(defaultVoice);
-      };
-
-      loadVoices();
-      window.speechSynthesis.onvoiceschanged = loadVoices;
+      
+      utterance.onstart = () => setIsSpeaking(true);
+      utterance.onend = () => setIsSpeaking(false);
+      utterance.onerror = () => setIsSpeaking(false);
+      
+      window.speechSynthesis.speak(utterance);
     }
-  }, []);
+  }, [selectedVoice]);
 
-  const processVoiceCommand = (command: string) => {
+  // Process voice command function using useCallback
+  const processVoiceCommand = useCallback((command: string) => {
     setIsProcessing(true);
     const lowerCommand = command.toLowerCase();
 
@@ -135,25 +124,67 @@ export default function VoiceAssistant() {
       setIsProcessing(false);
       speakResponse(response);
     }, 500);
-  };
+  }, [speakResponse]);
 
-  const speakResponse = (text: string) => {
-    if ('speechSynthesis' in window) {
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 0.9;
-      utterance.pitch = 1;
-      utterance.volume = 1;
-      if (selectedVoice) {
-        utterance.voice = selectedVoice;
+  // Initialize Speech Recognition
+  useEffect(() => {
+    // Check if browser supports Web Speech API
+    if (typeof window !== 'undefined') {
+      const SpeechRecognitionAPI = 
+        window.SpeechRecognition || 
+        window.webkitSpeechRecognition;
+
+      if (SpeechRecognitionAPI) {
+        const recognitionInstance = new SpeechRecognitionAPI();
+        recognitionInstance.continuous = true;
+        recognitionInstance.interimResults = true;
+        recognitionInstance.lang = 'en-US';
+
+        recognitionInstance.onresult = (event: SpeechRecognitionEvent) => {
+          const current = event.resultIndex;
+          const transcriptText = event.results[current][0].transcript;
+          setTranscript(transcriptText);
+
+          if (event.results[current].isFinal) {
+            processVoiceCommand(transcriptText);
+          }
+        };
+
+        recognitionInstance.onerror = (event: SpeechRecognitionErrorEvent) => {
+          console.error('Speech recognition error:', event.error);
+          setIsListening(false);
+        };
+
+        recognitionInstance.onend = () => {
+          setIsListening(false);
+        };
+
+        setRecognition(recognitionInstance);
+      } else {
+        setBrowserSupported(false);
       }
-      
-      utterance.onstart = () => setIsSpeaking(true);
-      utterance.onend = () => setIsSpeaking(false);
-      utterance.onerror = () => setIsSpeaking(false);
-      
-      window.speechSynthesis.speak(utterance);
+
+      // Load available voices and set a female voice as default
+      const loadVoices = () => {
+        const voices = window.speechSynthesis.getVoices();
+        // Try to find common female voices with natural accent
+        const femaleVoice = voices.find(v => 
+          v.name.toLowerCase().includes('samantha') ||
+          v.name.toLowerCase().includes('karen') ||
+          v.name.toLowerCase().includes('victoria') ||
+          v.name.toLowerCase().includes('google us english female') ||
+          v.name.toLowerCase().includes('microsoft zira') ||
+          (v.name.toLowerCase().includes('female') && v.lang.startsWith('en'))
+        );
+        const englishVoice = voices.find(v => v.lang.startsWith('en') && !v.name.toLowerCase().includes('male'));
+        const defaultVoice = femaleVoice || englishVoice || voices[0];
+        setSelectedVoice(defaultVoice);
+      };
+
+      loadVoices();
+      window.speechSynthesis.onvoiceschanged = loadVoices;
     }
-  };
+  }, [processVoiceCommand]);
 
   const stopSpeaking = () => {
     if ('speechSynthesis' in window) {
@@ -188,7 +219,7 @@ export default function VoiceAssistant() {
             Voice Recognition Not Supported
           </h3>
           <p className="text-gray-600">
-            Your browser doesn't support the Web Speech API. Please use Chrome, Edge, or Safari for voice navigation.
+            Your browser doesn&apos;t support the Web Speech API. Please use Chrome, Edge, or Safari for voice navigation.
           </p>
         </div>
       </motion.div>
@@ -204,11 +235,11 @@ export default function VoiceAssistant() {
         transition={{ duration: 0.5 }}
         className="text-center"
       >
-        <h2 className="text-4xl text-gray-900 mb-3" style={{ fontFamily: 'Stack Sans, sans-serif', fontWeight: 900 }}>
+        <h2 className="text-4xl text-gray-900 mb-3 font-bold">
           Voice Navigation Assistant
         </h2>
-        <p className="text-xl text-gray-600" style={{ fontFamily: 'Stack Sans, sans-serif', fontWeight: 400 }}>
-          Ask me anything about the hospital floor plan and I'll guide you
+        <p className="text-xl text-gray-600">
+          Ask me anything about the hospital floor plan and I&apos;ll guide you
         </p>
       </motion.div>
 
@@ -217,12 +248,8 @@ export default function VoiceAssistant() {
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.5, delay: 0.2 }}
-        className="relative rounded-2xl shadow-2xl p-8 border border-gray-600 overflow-hidden"
-        style={{ background: 'linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 25%, #2a2a2a 50%, #1a1a1a 75%, #0a0a0a 100%)' }}
+        className="bg-linear-to-br from-blue-50 to-indigo-50 relative rounded-2xl shadow-2xl p-8 overflow-hidden border-2 border-blue-200"
       >
-        {/* Animated Background Gradient Overlay */}
-        <div className="absolute inset-0 bg-gradient-to-br from-gray-800/40 via-gray-600/20 to-gray-900/40 animate-gradient-shift" />
-        
         <div className="relative z-10 text-center">
           {/* Stop Speaking Button */}
           {isSpeaking && (
@@ -232,8 +259,7 @@ export default function VoiceAssistant() {
                 animate={{ scale: 1 }}
                 exit={{ scale: 0 }}
                 onClick={stopSpeaking}
-                className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors shadow-lg"
-                style={{ fontFamily: 'Stack Sans, sans-serif', fontWeight: 700 }}
+                className="flex items-center gap-2 bg-red-600/80 backdrop-blur-sm hover:bg-red-600 text-white px-4 py-2 rounded-lg transition-colors shadow-lg border border-red-500/50 font-semibold cursor-pointer"
               >
                 <StopCircle size={18} />
                 Stop Speaking
@@ -248,11 +274,11 @@ export default function VoiceAssistant() {
               disabled={isProcessing}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
-              className={`relative w-32 h-32 rounded-full transition-all shadow-2xl ${
+              className={`relative w-32 h-32 rounded-full transition-all shadow-2xl border-4 ${
                 isListening
-                  ? 'bg-gradient-to-br from-red-500 to-red-600 glow'
-                  : 'bg-gray-800 border-2 border-gray-600'
-              } ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  ? 'bg-red-600 border-red-700 ring-4 ring-red-300'
+                  : 'bg-blue-600 border-blue-700'
+              } ${isProcessing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
             >
               {/* Pulse Rings for Listening State */}
               {isListening && (
@@ -274,7 +300,7 @@ export default function VoiceAssistant() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.4 }}
-              className="mt-4 text-lg font-medium text-white"
+              className="mt-4 text-lg font-medium text-gray-900"
             >
               {isProcessing
                 ? 'Processing...'
@@ -293,10 +319,10 @@ export default function VoiceAssistant() {
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }}
-                  className="bg-gray-800 rounded-xl p-4 border border-gray-600 shadow-lg"
+                  className="bg-blue-100 rounded-xl p-4 border-2 border-blue-300 shadow-lg"
                 >
-                  <p className="text-sm text-gray-400 font-semibold mb-1">You said:</p>
-                  <p className="text-lg font-medium text-white">{transcript}</p>
+                  <p className="text-sm text-blue-700 font-semibold mb-1">You said:</p>
+                  <p className="text-lg font-medium text-gray-900">{transcript}</p>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -306,13 +332,13 @@ export default function VoiceAssistant() {
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="bg-gray-800 rounded-xl p-4 border border-gray-600 shadow-lg"
+                className="bg-white rounded-xl p-4 border-2 border-gray-300 shadow-lg"
               >
-                <p className="text-sm text-gray-400 font-semibold mb-1 flex items-center">
+                <p className="text-sm text-gray-700 font-semibold mb-1 flex items-center">
                   <Volume2 className="inline mr-2" size={16} />
                   Reply:
                 </p>
-                <p className="text-base text-white leading-relaxed">{commands[0].response}</p>
+                <p className="text-base text-gray-900 leading-relaxed">{commands[0].response}</p>
               </motion.div>
             )}
           </div>
@@ -324,10 +350,10 @@ export default function VoiceAssistant() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3 }}
-        className="glass-strong rounded-2xl shadow-xl p-6 border border-white/20"
+        className="bg-white rounded-2xl shadow-xl p-6 border-2 border-gray-200"
       >
-        <h3 className="text-xl text-gray-900 mb-4 flex items-center" style={{ fontFamily: 'Stack Sans, sans-serif', fontWeight: 800 }}>
-          <MessageSquare className="mr-2 text-gray-700" size={24} />
+        <h3 className="text-xl text-gray-900 mb-4 flex items-center font-bold">
+          <MessageSquare className="mr-2 text-blue-600" size={24} />
           Example Voice Commands
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -349,12 +375,12 @@ export default function VoiceAssistant() {
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 0.4 + index * 0.05 }}
               whileHover={{ scale: 1.03, y: -2 }}
-              className="glass hover:glass-strong rounded-xl p-3 text-sm text-gray-700 transition-all cursor-pointer border border-white/20 hover:border-gray-400/50 shadow-md hover:shadow-lg"
+              className="bg-blue-50 hover:bg-blue-100 rounded-xl p-3 text-sm text-gray-900 transition-all cursor-pointer border-2 border-blue-200 hover:border-blue-300 shadow-md hover:shadow-lg"
               onClick={() => {
                 processVoiceCommand(example);
               }}
             >
-              <span className="text-gray-600 mr-2">💬</span>
+              <span className="text-blue-600 mr-2">💬</span>
               &quot;{example}&quot;
             </motion.div>
           ))}
@@ -367,9 +393,9 @@ export default function VoiceAssistant() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
-          className="glass-strong rounded-2xl shadow-xl p-6 border border-white/20"
+          className="bg-white rounded-2xl shadow-xl p-6 border-2 border-gray-200"
         >
-          <h3 className="text-xl text-gray-900 mb-4" style={{ fontFamily: 'Stack Sans, sans-serif', fontWeight: 800 }}>
+          <h3 className="text-xl text-gray-900 mb-4 font-bold">
             Navigation History
           </h3>
           <div className="space-y-4">
@@ -379,20 +405,20 @@ export default function VoiceAssistant() {
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: index * 0.1 }}
-                className="glass rounded-xl p-4 border-l-4 border-gray-600 shadow-md hover:shadow-lg transition-all hover:scale-[1.01]"
+                className="bg-blue-50 rounded-xl p-4 border-l-4 border-blue-600 shadow-md hover:shadow-lg transition-all hover:scale-[1.01]"
               >
                 <div className="flex justify-between items-start mb-2">
                   <p className="font-medium text-gray-900 flex items-center">
-                    <Mic className="inline mr-2 text-gray-700" size={16} />
+                    <Mic className="inline mr-2 text-blue-600" size={16} />
                     {cmd.command}
                   </p>
-                  <span className="text-xs text-gray-500 bg-gray-100/50 px-2 py-1 rounded-full">
+                  <span className="text-xs text-gray-600 bg-gray-200 px-2 py-1 rounded-full">
                     {cmd.timestamp.toLocaleTimeString()}
                   </span>
                 </div>
-                <div className="glass-dark rounded-lg p-3 mt-2 border border-white/10">
+                <div className="bg-white rounded-lg p-3 mt-2 border-2 border-gray-200">
                   <p className="text-sm text-gray-700 flex items-start">
-                    <Volume2 className="inline mr-2 mt-0.5 flex-shrink-0 text-gray-600" size={14} />
+                    <Volume2 className="inline mr-2 mt-0.5 shrink-0 text-blue-600" size={14} />
                     <span>{cmd.response}</span>
                   </p>
                 </div>

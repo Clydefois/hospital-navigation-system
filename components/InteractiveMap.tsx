@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import Image from 'next/image';
 import {
   Map,
   Layers,
@@ -8,8 +9,10 @@ import {
   ZoomIn,
   ZoomOut,
   Maximize2,
-  MapPin,
+  Search,
+  Navigation2,
 } from 'lucide-react';
+import { motion } from 'framer-motion';
 
 interface MapLegendItem {
   color: string;
@@ -18,16 +21,14 @@ interface MapLegendItem {
 }
 
 export default function InteractiveMap() {
-  const [selectedFloor, setSelectedFloor] = useState(1);
+  const [selectedFloor, setSelectedFloor] = useState(0);
   const [zoom, setZoom] = useState(1);
   const [showLegend, setShowLegend] = useState(true);
 
+  const [searchQuery, setSearchQuery] = useState('');
+
   const floors = [
-    { id: 0, name: 'Ground Floor', label: 'G' },
-    { id: 1, name: '1st Floor', label: '1' },
-    { id: 2, name: '2nd Floor', label: '2' },
-    { id: 3, name: '3rd Floor', label: '3' },
-    { id: 4, name: '4th Floor', label: '4' },
+    { id: 0, name: 'Ground Floor', label: 'G', hasMap: true },
   ];
 
   const legendItems: MapLegendItem[] = [
@@ -56,56 +57,107 @@ export default function InteractiveMap() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Floor Selection Sidebar */}
+        {/* Navigation Sidebar */}
         <div className="lg:col-span-1">
-          <div className="bg-white rounded-lg shadow-lg p-6 sticky top-24">
-            <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center">
-              <Layers className="mr-2 text-blue-600" size={20} />
-              Floor Selection
-            </h3>
-            <div className="space-y-2">
-              {floors.map((floor) => (
-                <button
-                  key={floor.id}
-                  onClick={() => setSelectedFloor(floor.id)}
-                  className={`w-full text-left px-4 py-3 rounded-lg transition-all ${
-                    selectedFloor === floor.id
-                      ? 'bg-blue-600 text-white shadow-md'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium">{floor.name}</span>
-                    <span
-                      className={`w-8 h-8 rounded-full flex items-center justify-center font-bold ${
-                        selectedFloor === floor.id
-                          ? 'bg-white text-blue-600'
-                          : 'bg-white text-gray-700'
-                      }`}
-                    >
-                      {floor.label}
-                    </span>
-                  </div>
-                </button>
-              ))}
+          <div className="glass-strong rounded-2xl shadow-xl p-6 sticky top-24 space-y-6">
+            {/* Search Location */}
+            <div>
+              <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center">
+                <Search className="mr-2 text-blue-600" size={20} />
+                Find Location
+              </h3>
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Search departments..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full px-4 py-3 bg-white/60 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-blue-600 text-sm cursor-text"
+                />
+                <Search size={18} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              </div>
+            </div>
+
+            {/* Floor Selection */}
+            <div className="border-t pt-6">
+              <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center">
+                <Layers className="mr-2 text-blue-600" size={20} />
+                Current Floor
+              </h3>
+              <div className="space-y-2">
+                {floors.map((floor) => (
+                  <button
+                    key={floor.id}
+                    onClick={() => setSelectedFloor(floor.id)}
+                    className={`w-full text-left px-5 py-4 rounded-xl transition-all duration-300 cursor-pointer ${
+                      selectedFloor === floor.id
+                        ? 'bg-linear-to-r from-blue-600 to-blue-700 text-white shadow-lg'
+                        : 'bg-white/60 text-gray-700 hover:bg-white/80'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold">{floor.name}</span>
+                      <span
+                        className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg ${
+                          selectedFloor === floor.id
+                            ? 'bg-white text-blue-600'
+                            : 'bg-blue-100 text-blue-600'
+                        }`}
+                      >
+                        {floor.label}
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Quick Navigation */}
-            <div className="mt-6 pt-6 border-t">
-              <h4 className="text-sm font-bold text-gray-900 mb-3 flex items-center">
-                <Navigation className="mr-2 text-blue-600" size={16} />
+            <div className="border-t pt-6">
+              <h4 className="text-sm font-bold text-gray-900 mb-4 flex items-center">
+                <Navigation className="mr-2 text-blue-600" size={18} />
                 Quick Navigation
               </h4>
               <div className="space-y-2">
-                <button className="w-full text-left text-sm px-3 py-2 bg-gray-100 rounded hover:bg-blue-50 hover:text-blue-600 transition-colors">
-                  Emergency Room
+                <button className="w-full text-left text-sm px-4 py-3 bg-red-50 rounded-xl hover:bg-red-100 text-red-700 font-medium transition-colors flex items-center space-x-2 cursor-pointer">
+                  <div className="w-2 h-2 bg-red-500 rounded-full" />
+                  <span>Emergency Room</span>
                 </button>
-                <button className="w-full text-left text-sm px-3 py-2 bg-gray-100 rounded hover:bg-blue-50 hover:text-blue-600 transition-colors">
-                  Main Entrance
+                <button className="w-full text-left text-sm px-4 py-3 bg-blue-50 rounded-xl hover:bg-blue-100 text-blue-700 font-medium transition-colors flex items-center space-x-2 cursor-pointer">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full" />
+                  <span>Cardio-Pulmonary</span>
                 </button>
-                <button className="w-full text-left text-sm px-3 py-2 bg-gray-100 rounded hover:bg-blue-50 hover:text-blue-600 transition-colors">
-                  Parking
+                <button className="w-full text-left text-sm px-4 py-3 bg-green-50 rounded-xl hover:bg-green-100 text-green-700 font-medium transition-colors flex items-center space-x-2 cursor-pointer">
+                  <div className="w-2 h-2 bg-green-500 rounded-full" />
+                  <span>Cafeteria</span>
                 </button>
+                <button className="w-full text-left text-sm px-4 py-3 bg-purple-50 rounded-xl hover:bg-purple-100 text-purple-700 font-medium transition-colors flex items-center space-x-2 cursor-pointer">
+                  <div className="w-2 h-2 bg-purple-500 rounded-full" />
+                  <span>Pediatric Dept.</span>
+                </button>
+                <button className="w-full text-left text-sm px-4 py-3 bg-teal-50 rounded-xl hover:bg-teal-100 text-teal-700 font-medium transition-colors flex items-center space-x-2 cursor-pointer">
+                  <div className="w-2 h-2 bg-teal-500 rounded-full" />
+                  <span>Surgery Department</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Legend */}
+            <div className="border-t pt-6">
+              <h4 className="text-sm font-bold text-gray-900 mb-4">Map Legend</h4>
+              <div className="space-y-2 text-xs">
+                <div className="flex items-center space-x-2">
+                  <div className="w-4 h-4 bg-gray-300 rounded" />
+                  <span className="text-gray-600">Passage/Hallway</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <div className="w-4 h-4 bg-blue-500 rounded" />
+                  <span className="text-gray-600">Departments</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <div className="w-4 h-4 bg-yellow-400 rounded-full" />
+                  <span className="text-gray-600">Your Location</span>
+                </div>
               </div>
             </div>
           </div>
@@ -113,7 +165,7 @@ export default function InteractiveMap() {
 
         {/* Main Map Area */}
         <div className="lg:col-span-3">
-          <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+          <div className="glass-strong rounded-lg shadow-lg overflow-hidden">
             {/* Map Controls */}
             <div className="bg-gray-100 px-4 py-3 flex justify-between items-center border-b">
               <div className="flex items-center space-x-2">
@@ -124,27 +176,27 @@ export default function InteractiveMap() {
               <div className="flex items-center space-x-2">
                 <button
                   onClick={() => setShowLegend(!showLegend)}
-                  className="p-2 bg-white rounded hover:bg-gray-200 transition-colors"
+                  className="p-2 bg-white rounded hover:bg-gray-200 transition-colors cursor-pointer"
                   title="Toggle Legend"
                 >
                   <Layers size={20} />
                 </button>
                 <button
                   onClick={() => setZoom(Math.min(zoom + 0.2, 2))}
-                  className="p-2 bg-white rounded hover:bg-gray-200 transition-colors"
+                  className="p-2 bg-white rounded hover:bg-gray-200 transition-colors cursor-pointer"
                   title="Zoom In"
                 >
                   <ZoomIn size={20} />
                 </button>
                 <button
                   onClick={() => setZoom(Math.max(zoom - 0.2, 0.5))}
-                  className="p-2 bg-white rounded hover:bg-gray-200 transition-colors"
+                  className="p-2 bg-white rounded hover:bg-gray-200 transition-colors cursor-pointer"
                   title="Zoom Out"
                 >
                   <ZoomOut size={20} />
                 </button>
                 <button
-                  className="p-2 bg-white rounded hover:bg-gray-200 transition-colors"
+                  className="p-2 bg-white rounded hover:bg-gray-200 transition-colors cursor-pointer"
                   title="Fullscreen"
                 >
                   <Maximize2 size={20} />
@@ -153,34 +205,122 @@ export default function InteractiveMap() {
             </div>
 
             {/* Map Canvas */}
-            <div className="relative bg-gray-50 min-h-[600px] overflow-auto">
+            <div className="relative bg-white min-h-[700px] overflow-auto rounded-b-lg">
               <div
                 style={{
                   transform: `scale(${zoom})`,
-                  transformOrigin: 'top left',
+                  transformOrigin: 'center center',
                   transition: 'transform 0.3s ease',
                 }}
-                className="w-full h-full p-8"
+                className="w-full h-full p-8 flex items-center justify-center"
               >
-                {/* Placeholder Map - Replace with actual floor plan */}
-                <div className="bg-gradient-to-br from-blue-50 to-white border-2 border-dashed border-blue-300 rounded-lg min-h-[500px] flex items-center justify-center relative">
-                  <div className="text-center z-10">
-                    <MapPin size={64} className="mx-auto text-blue-400 mb-4" />
-                    <h3 className="text-xl font-bold text-gray-700 mb-2">
-                      {floors[selectedFloor].name} Plan
-                    </h3>
-                    <p className="text-gray-500">
-                      Upload your {floors[selectedFloor].name} PNG map here
-                    </p>
-                    <p className="text-gray-400 text-sm mt-4">
-                      Interactive features will be added after map upload
-                    </p>
-                  </div>
+                {/* Actual Hospital Floor Plan */}
+                <div className="relative w-full max-w-6xl mx-auto">
+                  <div className="relative aspect-4/3 rounded-xl overflow-hidden shadow-2xl border-4 border-white">
+                    <Image
+                      src="/HospitalFloorPlan.png"
+                      alt="Hospital Floor Plan"
+                      fill
+                      className="object-contain bg-gray-100"
+                      priority
+                    />
+                    
+                    {/* Interactive markers - positioned based on the floor plan */}
+                    <motion.div
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      transition={{ delay: 0.5, type: 'spring' }}
+                      className="absolute top-[68%] left-[50%] -translate-x-1/2 -translate-y-1/2 group cursor-pointer"
+                      whileHover={{ scale: 1.3 }}
+                    >
+                      <div className="relative">
+                        <div className="w-6 h-6 bg-red-500 rounded-full animate-pulse shadow-lg" />
+                        <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity shadow-xl">
+                          Emergency Room
+                        </div>
+                      </div>
+                    </motion.div>
 
-                  {/* Sample Interactive Points (to be customized) */}
-                  <div className="absolute top-1/4 left-1/4 w-4 h-4 bg-red-500 rounded-full animate-pulse cursor-pointer hover:scale-150 transition-transform"></div>
-                  <div className="absolute top-1/3 right-1/3 w-4 h-4 bg-blue-500 rounded-full animate-pulse cursor-pointer hover:scale-150 transition-transform"></div>
-                  <div className="absolute bottom-1/3 left-1/3 w-4 h-4 bg-green-500 rounded-full animate-pulse cursor-pointer hover:scale-150 transition-transform"></div>
+                    <motion.div
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      transition={{ delay: 0.6, type: 'spring' }}
+                      className="absolute top-[45%] left-[78%] -translate-x-1/2 -translate-y-1/2 group cursor-pointer"
+                      whileHover={{ scale: 1.3 }}
+                    >
+                      <div className="relative">
+                        <div className="w-6 h-6 bg-blue-500 rounded-full animate-pulse shadow-lg" />
+                        <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity shadow-xl">
+                          Cardio-Pulmonary
+                        </div>
+                      </div>
+                    </motion.div>
+
+                    <motion.div
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      transition={{ delay: 0.7, type: 'spring' }}
+                      className="absolute top-[55%] left-[68%] -translate-x-1/2 -translate-y-1/2 group cursor-pointer"
+                      whileHover={{ scale: 1.3 }}
+                    >
+                      <div className="relative">
+                        <div className="w-6 h-6 bg-green-500 rounded-full animate-pulse shadow-lg" />
+                        <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity shadow-xl">
+                          Cafeteria
+                        </div>
+                      </div>
+                    </motion.div>
+
+                    <motion.div
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      transition={{ delay: 0.8, type: 'spring' }}
+                      className="absolute top-[55%] left-[48%] -translate-x-1/2 -translate-y-1/2 group cursor-pointer"
+                      whileHover={{ scale: 1.3 }}
+                    >
+                      <div className="relative">
+                        <div className="w-6 h-6 bg-purple-500 rounded-full animate-pulse shadow-lg" />
+                        <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-purple-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity shadow-xl">
+                          Pediatric Dept.
+                        </div>
+                      </div>
+                    </motion.div>
+
+                    <motion.div
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      transition={{ delay: 0.9, type: 'spring' }}
+                      className="absolute top-[28%] left-[32%] -translate-x-1/2 -translate-y-1/2 group cursor-pointer"
+                      whileHover={{ scale: 1.3 }}
+                    >
+                      <div className="relative">
+                        <div className="w-6 h-6 bg-teal-500 rounded-full animate-pulse shadow-lg" />
+                        <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-teal-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity shadow-xl">
+                          Surgery Department
+                        </div>
+                      </div>
+                    </motion.div>
+
+                    {/* Current Location Indicator */}
+                    <motion.div
+                      animate={{
+                        scale: [1, 1.2, 1],
+                      }}
+                      transition={{
+                        duration: 2,
+                        repeat: Infinity,
+                      }}
+                      className="absolute top-[80%] left-[50%] -translate-x-1/2 -translate-y-1/2"
+                    >
+                      <div className="relative">
+                        <div className="w-8 h-8 bg-yellow-400 rounded-full shadow-xl border-4 border-white" />
+                        <div className="absolute -bottom-14 left-1/2 -translate-x-1/2 bg-yellow-500 text-white px-4 py-2 rounded-lg text-sm font-bold whitespace-nowrap shadow-xl flex items-center space-x-2">
+                          <Navigation2 size={16} />
+                          <span>You Are Here</span>
+                        </div>
+                      </div>
+                    </motion.div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -206,7 +346,7 @@ export default function InteractiveMap() {
           </div>
 
           {/* Map Instructions */}
-          <div className="mt-4 bg-blue-50 rounded-lg p-4">
+          <div className="mt-4 glass rounded-lg p-4">
             <h4 className="text-sm font-bold text-blue-900 mb-2">
               How to Use Interactive Map
             </h4>
