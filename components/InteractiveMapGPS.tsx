@@ -240,7 +240,7 @@ export default function InteractiveMapGPS({ isDarkMode = false, fullScreen = fal
     };
   }, []);
 
-  // Touch handlers for pinch-to-zoom
+  // Touch handlers for pinch-to-zoom and drag
   const handleTouchMove = (e: Konva.KonvaEventObject<TouchEvent>) => {
     const touch1 = e.evt.touches[0];
     const touch2 = e.evt.touches[1];
@@ -288,6 +288,7 @@ export default function InteractiveMapGPS({ isDarkMode = false, fullScreen = fal
       lastDistRef.current = dist;
       lastCenterRef.current = center;
     }
+    // Single touch is handled by Konva's draggable
   };
 
   const handleTouchEnd = () => {
@@ -398,7 +399,7 @@ export default function InteractiveMapGPS({ isDarkMode = false, fullScreen = fal
                     height={fullScreen ? window.innerHeight : Math.min(containerWidth, FLOOR_PLAN_WIDTH) * (FLOOR_PLAN_HEIGHT / FLOOR_PLAN_WIDTH)}
                     scaleX={zoom}
                     scaleY={zoom}
-                    draggable={zoom > 1 && !isPinching}
+                    draggable={!isPinching}
                     x={stagePos.x}
                     y={stagePos.y}
                     onDragEnd={(e) => {
