@@ -279,6 +279,38 @@ export default function InteractiveMapGPS({ isDarkMode = false, fullScreen = fal
     lastDistRef.current = 0;
   };
 
+  // Wheel zoom handler for desktop
+  const handleWheel = (e: Konva.KonvaEventObject<WheelEvent>) => {
+    e.evt.preventDefault();
+    const stage = stageRef.current;
+    if (!stage) return;
+
+    const scaleBy = 1.1;
+    const oldScale = zoom;
+    
+    // Get pointer position
+    const pointer = stage.getPointerPosition();
+    if (!pointer) return;
+
+    const mousePointTo = {
+      x: (pointer.x - stage.x()) / oldScale,
+      y: (pointer.y - stage.y()) / oldScale,
+    };
+
+    const direction = e.evt.deltaY > 0 ? -1 : 1;
+    const newScale = direction > 0 
+      ? Math.min(oldScale * scaleBy, 3) 
+      : Math.max(oldScale / scaleBy, 0.5);
+
+    const newPos = {
+      x: pointer.x - mousePointTo.x * newScale,
+      y: pointer.y - mousePointTo.y * newScale,
+    };
+
+    setZoom(newScale);
+    setStagePos(newPos);
+  };
+
   return (
     <div className={fullScreen ? "w-full h-full relative" : "w-full relative px-3 md:px-6 pb-6 md:pb-8"}>
       {/* Minimalist Container */}
@@ -348,7 +380,7 @@ export default function InteractiveMapGPS({ isDarkMode = false, fullScreen = fal
                     height={fullScreen ? window.innerHeight : Math.min(containerWidth, FLOOR_PLAN_WIDTH) * (FLOOR_PLAN_HEIGHT / FLOOR_PLAN_WIDTH) * zoom}
                     scaleX={fullScreen ? zoom : Math.min(containerWidth / FLOOR_PLAN_WIDTH, 1) * zoom}
                     scaleY={fullScreen ? zoom : Math.min(containerWidth / FLOOR_PLAN_WIDTH, 1) * zoom}
-                    draggable={fullScreen}
+                    draggable={zoom > 1}
                     x={stagePos.x}
                     y={stagePos.y}
                     onDragEnd={(e) => {
@@ -359,6 +391,7 @@ export default function InteractiveMapGPS({ isDarkMode = false, fullScreen = fal
                     }}
                     onTouchMove={handleTouchMove}
                     onTouchEnd={handleTouchEnd}
+                    onWheel={handleWheel}
                   >
                     <Layer>
                       <FloorPlanImage src="/HospitalFloorPlan.png" />
