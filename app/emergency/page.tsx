@@ -1,21 +1,38 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { AlertTriangle, Phone, Navigation, Clock, ArrowLeft } from 'lucide-react';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import Loader from '@/components/Loader';
 
 export default function EmergencyPage() {
+  const router = useRouter();
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadingText, setLoadingText] = useState('Loading...');
+
+  const navigateWithLoader = (path: string, text: string) => {
+    setLoadingText(text);
+    setIsLoading(true);
+    setTimeout(() => {
+      router.push(path);
+    }, 2000);
+  };
+
   return (
     <div className="min-h-screen bg-red-50 py-8 px-4">
+      {/* Full Screen Loader */}
+      {isLoading && <Loader text={loadingText} />}
+      
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <Link href="/">
-            <button className="flex items-center gap-2 text-red-600 hover:text-red-700 font-semibold mb-4">
-              <ArrowLeft size={20} />
-              Back to Home
-            </button>
-          </Link>
+          <button 
+            onClick={() => navigateWithLoader('/', 'Going back...')}
+            className="flex items-center gap-2 text-red-600 hover:text-red-700 font-semibold mb-4 cursor-pointer"
+          >
+            <ArrowLeft size={20} />
+            Back to Home
+          </button>
           <div className="flex items-center gap-4 mb-2">
             <AlertTriangle size={48} className="text-red-600" />
             <h1 className="text-4xl font-bold text-gray-900">Emergency Services</h1>
@@ -47,11 +64,12 @@ export default function EmergencyPage() {
           <p className="text-gray-700 mb-6">
             <strong>Zone:</strong> Zone S2
           </p>
-          <Link href="/navigation">
-            <button className="w-full bg-red-600 text-white py-4 px-6 rounded-lg hover:bg-red-700 transition-colors font-semibold text-lg shadow-md">
-              Get Directions to Emergency Room
-            </button>
-          </Link>
+          <button 
+            onClick={() => navigateWithLoader('/navigation', 'Opening navigation...')}
+            className="w-full bg-red-600 text-white py-4 px-6 rounded-lg hover:bg-red-700 transition-colors font-semibold text-lg shadow-md cursor-pointer"
+          >
+            Get Directions to Emergency Room
+          </button>
         </div>
 
         {/* Operating Hours */}

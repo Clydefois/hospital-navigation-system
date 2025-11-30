@@ -1,73 +1,107 @@
-# Hospital Navigation System
+# ZC Medical Center Navigation System
 
-A comprehensive healthcare navigation system with voice recognition and interactive mapping features built with Next.js and Tailwind CSS.
+A voice-powered hospital navigation app that helps patients and visitors find their way around the hospital.
 
-## Features
+**Live Website:** https://zcmedicalcenter.netlify.app
 
-### 1. Landing Page
-- Welcome section with hospital statistics
-- Hospital floor plan preview with zoom functionality
-- Quick access to all major sections
+---
 
-### 2. Voice Assistant
-- **Voice Recognition**: Uses Web Speech API for browser-based voice recognition
-- **Floor Plan Navigation**: Voice commands to navigate to different departments
-- **Real-time Transcription**: See what you say in real-time
-- **Voice Response**: Text-to-speech responses for guided navigation
-- **Command History**: Track your navigation queries
+## What This System Does
 
-#### Supported Voice Commands:
-- "Where is the Emergency Room?"
-- "Take me to Cardiology"
-- "Where is the pharmacy?"
-- "Find the nearest restroom"
-- "Where can I park?"
-- "Show me the cafeteria"
-- "Where is Radiology?"
-- "How do I make an appointment?"
+- **Voice Navigation** – Talk to the app and it guides you to any department
+- **Interactive Map** – See the hospital layout with real GPS tracking
+- **AI Assistant** – Understands symptoms and suggests the right department
+- **Turn-by-turn Directions** – Shows the path from your location to your destination
 
-### 3. Quick Access Services
-Six essential services with detailed information:
-- **Emergency Services** - 24/7 emergency care
-- **Appointments** - Schedule and manage appointments
-- **Parking Information** - Parking facilities and access
-- **Contact Information** - General inquiries and directory
-- **Accessibility Services** - Support for special needs
-- **Pharmacy** - Prescription and medical supplies
+---
 
-### 4. Interactive Hospital Map
-- **Multi-floor Navigation**: Browse different hospital floors
-- **Zoom Controls**: Zoom in/out for detailed viewing
-- **Map Legend**: Color-coded department identification
-- **Quick Navigation**: Shortcut buttons for common destinations
-- **Interactive Markers**: Clickable location markers (ready for customization)
+## Key Features
 
-### 5. Department Directory
-Complete directory with 8 major departments including Emergency Medicine, Cardiology, Neurology, Pediatrics, Orthopedics, Ophthalmology, Internal Medicine, and Pharmacy Services.
+### 🎤 Voice Assistant
+- Say things like "Where is the emergency room?" or "I have a headache"
+- The AI understands 120+ keywords and responds with directions
+- Works in English
 
-## Getting Started
+### 🗺️ GPS Navigation
+- Uses your phone's GPS to show your real-time location
+- Draws a walking path to your destination
+- Shows distance and estimated walking time
+
+### 🏥 All Hospital Buildings Included
+- Emergency Room
+- Surgery, Pediatrics, Neurology, Cardiology
+- Radiology, Laboratory, Dermatology, Ophthalmology, Nephrology, Orthopedic
+- Doctors' Clinic
+- Cafeteria, Comfort Room, Church, Parking
+
+---
+
+## How It Works
+
+1. **Open the website** on your phone
+2. **Allow location access** when prompted
+3. **Tap the microphone** or select a destination from the dropdown
+4. **Follow the green path** on the map to your destination
+
+---
+
+## Technologies Used
+
+| What | Purpose |
+|------|---------|
+| **Next.js** | The web framework (makes the website work) |
+| **Leaflet + OpenStreetMap** | Interactive maps with GPS |
+| **Web Speech API** | Voice recognition (built into browsers) |
+| **Custom AI Model** | Understands symptoms and finds locations |
+| **Tailwind CSS** | Styling and design |
+| **Netlify** | Hosting the website online |
+| **Framer Motion** | Smooth animations |
+
+---
+
+## External Services
+
+- **OpenStreetMap** – Free map tiles (no API key needed)
+- **Netlify** – Free website hosting
+- **Browser GPS** – Uses your device's built-in location
+
+**No paid services required** – everything runs for free.
+
+---
+
+## How to Run Locally
 
 ```bash
-cd "Hospital track"
+# Install dependencies
 npm install
+
+# Start development server
 npm run dev
+
+# Open in browser
+http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser
+---
 
-## Adding Your Hospital Floor Plans
+## Deployment
 
-Place your PNG files in the `public` folder and update the components to reference them.
+The app is deployed on Netlify. Any push to the main branch automatically updates the live site.
 
-## Technology Stack
+---
 
-- **Framework**: Next.js 15 with App Router
-- **Styling**: Tailwind CSS
-- **Icons**: Lucide React
-- **Voice Recognition**: Web Speech API (Browser-native)
-- **Language**: TypeScript
+## Credits
 
-## Browser Compatibility
+Developed for Zamboanga City Medical Center (CMZ) at Ateneo de Zamboanga University campus.
 
-Voice Recognition works best in Chrome, Edge, and Safari.
-# hospital-navigation-system
+---
+
+## Quick Summary
+
+| Feature | How It Helps |
+|---------|--------------|
+| Voice commands | Hands-free navigation for patients |
+| GPS tracking | Know exactly where you are |
+| AI symptom matching | Don't know where to go? Describe your problem |
+| Offline-capable map | Works even with slow internet |
+| Mobile-friendly | Works on any smartphone |

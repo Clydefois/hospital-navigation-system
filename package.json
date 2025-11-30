@@ -21,6 +21,7 @@
     "konva": "^10.0.12",
     "leaflet": "^1.9.4",
     "leaflet-imageoverlay-rotated": "^0.2.1",
+    "leaflet-rotate": "^0.2.8",
     "lucide-react": "^0.553.0",
     "next": "16.0.1",
     "react": "19.2.0",
@@ -28,6 +29,7 @@
     "react-konva": "^19.2.0",
     "react-leaflet": "^5.0.0",
     "react-speech-recognition": "^4.0.1",
+    "styled-components": "^6.1.19",
     "tailwind-merge": "^3.4.0",
     "use-image": "^1.1.4"
   },
@@ -37,6 +39,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/styled-components": "^5.1.36",
     "eslint": "^9",
     "eslint-config-next": "16.0.1",
     "tailwindcss": "^4",

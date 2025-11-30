@@ -1,21 +1,38 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Car, Clock, DollarSign, MapPin, ArrowLeft } from 'lucide-react';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import Loader from '@/components/Loader';
 
 export default function ParkingPage() {
+  const router = useRouter();
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadingText, setLoadingText] = useState('Loading...');
+
+  const navigateWithLoader = (path: string, text: string) => {
+    setLoadingText(text);
+    setIsLoading(true);
+    setTimeout(() => {
+      router.push(path);
+    }, 2000);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4">
+      {/* Full Screen Loader */}
+      {isLoading && <Loader text={loadingText} />}
+      
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <Link href="/">
-            <button className="flex items-center gap-2 text-blue-600 hover:text-blue-700 font-semibold mb-4">
-              <ArrowLeft size={20} />
-              Back to Home
-            </button>
-          </Link>
+          <button 
+            onClick={() => navigateWithLoader('/', 'Going back...')}
+            className="flex items-center gap-2 text-blue-600 hover:text-blue-700 font-semibold mb-4 cursor-pointer"
+          >
+            <ArrowLeft size={20} />
+            Back to Home
+          </button>
           <h1 className="text-4xl font-bold text-gray-900 mb-2">Parking Information</h1>
           <p className="text-lg text-gray-600">Multi-level parking facility for patients and visitors</p>
         </div>
@@ -33,11 +50,12 @@ export default function ParkingPage() {
             <strong>Zone:</strong> Outdoor (Main Entrance)
           </p>
           <div className="mt-6">
-            <Link href="/navigation">
-              <button className="bg-purple-600 text-white py-3 px-6 rounded-lg hover:bg-purple-700 transition-colors font-semibold shadow-md">
-                Get Directions to Parking
-              </button>
-            </Link>
+            <button 
+              onClick={() => navigateWithLoader('/navigation', 'Opening navigation...')}
+              className="bg-purple-600 text-white py-3 px-6 rounded-lg hover:bg-purple-700 transition-colors font-semibold shadow-md cursor-pointer"
+            >
+              Get Directions to Parking
+            </button>
           </div>
         </div>
 

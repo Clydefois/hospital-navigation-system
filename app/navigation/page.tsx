@@ -2,9 +2,10 @@
 
 import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, ChevronUp, MapPin, ChevronDown, Navigation } from 'lucide-react';
-import Link from 'next/link';
-import { useState } from 'react';
+import { ArrowLeft, MapPin, ChevronDown, Navigation, CornerUpRight, Compass, LocateFixed, XCircle, ChevronLeft, ChevronRight, User, Mail, Phone } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useState, useCallback, useEffect, useRef, Suspense } from 'react';
+import Loader from '@/components/Loader';
 
 // Dynamic import to avoid SSR issues with Leaflet
 const InteractiveMapLeaflet = dynamic(
@@ -13,7 +14,7 @@ const InteractiveMapLeaflet = dynamic(
     ssr: false,
     loading: () => (
       <div className="w-full h-full flex items-center justify-center bg-gray-100">
-        <div className="text-gray-500">Loading map...</div>
+        <Loader text="Loading map..." />
       </div>
     )
   }
@@ -44,62 +45,187 @@ const locations = [
   { id: '16', name: 'Diagnostic/Laboratory', category: 'Service', floor: 'Ground Floor', section: 'Near Gate 6, Road K area' },
 ];
 
-export default function NavigationPage() {
+// Department ID mapping from DepartmentDirectory to InteractiveMapLeaflet
+const departmentIdMapping: Record<string, string> = {
+  'emergency': '14',
+  'doctors-clinic': '18',
+  'radiology': '12',
+  'orthopedic': '11',
+  'cafeteria': '8',
+  'comfort-room': '7',
+  'cardio-pulmonary': '15',
+  'diagnostic-lab': '16',
+  'neurology': '6',
+  'pediatrics': '10',
+  'surgery': '9',
+  'nephrology': '2',
+  'dermatology': '17',
+  'ophthalmology': '5',
+  'church': '13',
+  'parking': 'parking',
+};
+
+// Doctor/Staff data for each department
+const departmentStaff: Record<string, { name: string; role: string; email?: string; phone?: string }[]> = {
+  '2': [ // Nephrology
+    { name: 'Dr. Maria Santos', role: 'Head Nephrologist', email: 'msantos@cmz.edu.ph', phone: '+63 912 345 6789' },
+    { name: 'Dr. Jose Reyes', role: 'Nephrologist', email: 'jreyes@cmz.edu.ph' },
+  ],
+  '5': [ // Ophthalmology
+    { name: 'Dr. Anna Cruz', role: 'Head Ophthalmologist', email: 'acruz@cmz.edu.ph', phone: '+63 912 345 6790' },
+    { name: 'Dr. Miguel Torres', role: 'Eye Surgeon', email: 'mtorres@cmz.edu.ph' },
+  ],
+  '6': [ // Neurology
+    { name: 'Dr. Carlos Mendoza', role: 'Head Neurologist', email: 'cmendoza@cmz.edu.ph', phone: '+63 912 345 6791' },
+    { name: 'Dr. Elena Garcia', role: 'Neurologist', email: 'egarcia@cmz.edu.ph' },
+  ],
+  '9': [ // Surgery
+    { name: 'Dr. Roberto Aquino', role: 'Chief Surgeon', email: 'raquino@cmz.edu.ph', phone: '+63 912 345 6792' },
+    { name: 'Dr. Patricia Lim', role: 'General Surgeon', email: 'plim@cmz.edu.ph' },
+    { name: 'Dr. Antonio Bautista', role: 'Surgical Resident', email: 'abautista@cmz.edu.ph' },
+  ],
+  '10': [ // Pediatrics
+    { name: 'Dr. Sofia Villanueva', role: 'Head Pediatrician', email: 'svillanueva@cmz.edu.ph', phone: '+63 912 345 6793' },
+    { name: 'Dr. Marco dela Cruz', role: 'Pediatrician', email: 'mdelacruz@cmz.edu.ph' },
+  ],
+  '11': [ // Orthopedic
+    { name: 'Dr. Fernando Ramos', role: 'Head Orthopedist', email: 'framos@cmz.edu.ph', phone: '+63 912 345 6794' },
+    { name: 'Dr. Isabella Navarro', role: 'Orthopedic Surgeon', email: 'inavarro@cmz.edu.ph' },
+  ],
+  '12': [ // Radiology
+    { name: 'Dr. Ricardo Tan', role: 'Head Radiologist', email: 'rtan@cmz.edu.ph', phone: '+63 912 345 6795' },
+    { name: 'Tech. Angela Morales', role: 'Radiology Technician', email: 'amorales@cmz.edu.ph' },
+  ],
+  '14': [ // Emergency
+    { name: 'Dr. Luis Fernandez', role: 'ER Director', email: 'lfernandez@cmz.edu.ph', phone: '+63 912 345 6796' },
+    { name: 'Dr. Carmen Diaz', role: 'Emergency Physician', email: 'cdiaz@cmz.edu.ph' },
+    { name: 'Nurse Joy Santos', role: 'Head ER Nurse', email: 'jsantos@cmz.edu.ph' },
+  ],
+  '15': [ // Cardio-Pulmonary
+    { name: 'Dr. Eduardo Lopez', role: 'Head Cardiologist', email: 'elopez@cmz.edu.ph', phone: '+63 912 345 6797' },
+    { name: 'Dr. Rosa Martinez', role: 'Pulmonologist', email: 'rmartinez@cmz.edu.ph' },
+  ],
+  '16': [ // Diagnostic/Laboratory
+    { name: 'Dr. Vincent Sy', role: 'Lab Director', email: 'vsy@cmz.edu.ph', phone: '+63 912 345 6798' },
+    { name: 'Tech. Maria Gonzales', role: 'Senior Lab Technician', email: 'mgonzales@cmz.edu.ph' },
+  ],
+  '17': [ // Dermatology
+    { name: 'Dr. Bianca Ocampo', role: 'Head Dermatologist', email: 'bocampo@cmz.edu.ph', phone: '+63 912 345 6799' },
+    { name: 'Dr. Rafael Santos', role: 'Dermatologist', email: 'rsantos@cmz.edu.ph' },
+  ],
+  '18': [ // Doctors' Clinic
+    { name: 'Dr. Manuel Cruz', role: 'General Practitioner', email: 'mcruz@cmz.edu.ph', phone: '+63 912 345 6800' },
+    { name: 'Dr. Teresa Reyes', role: 'Family Medicine', email: 'treyes@cmz.edu.ph' },
+  ],
+  '13': [ // Church
+    { name: 'Fr. Joseph Dela Rosa', role: 'Chaplain', email: 'jdelarosa@cmz.edu.ph' },
+  ],
+  '7': [], // Comfort Room - no staff
+  '8': [ // Cafeteria
+    { name: 'Mrs. Linda Castillo', role: 'Cafeteria Manager', email: 'lcastillo@cmz.edu.ph' },
+  ],
+};
+
+// Inner component that uses useSearchParams
+function NavigationPageContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [locationGranted, setLocationGranted] = useState(false);
-  const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [selectedDestination, setSelectedDestination] = useState<typeof locations[0] | null>(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
+  const [isRequestingLocation, setIsRequestingLocation] = useState(false);
   const [distance, setDistance] = useState<number | null>(null);
+  const [recenterTrigger, setRecenterTrigger] = useState(0);
+  const [followMode, setFollowMode] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadingText, setLoadingText] = useState('Loading...');
+  const [focusTrigger, setFocusTrigger] = useState(0);
+  const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const initialLocateRef = useRef<string | null>(null);
 
-  const requestLocation = () => {
-    if (!navigator.geolocation) {
-      setLocationError('Geolocation is not supported by your browser.');
-      return;
+  // Handle locate query parameter from DepartmentDirectory
+  useEffect(() => {
+    const locateId = searchParams.get('locate');
+    if (locateId) {
+      initialLocateRef.current = locateId;
     }
+  }, [searchParams]);
 
-    // Check if we're on HTTPS or localhost
-    const isSecureContext = window.isSecureContext || window.location.hostname === 'localhost';
-    
-    if (!isSecureContext) {
-      setLocationError('Geolocation requires HTTPS. Please use https://zcmedicalcenter.netlify.app or skip to manual selection.');
-      return;
-    }
-
-    // iOS Safari specific handling
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        console.log('Location granted:', position.coords);
-        setLocationGranted(true);
-        setLocationError(null);
-      },
-      (error) => {
-        console.error('Geolocation error:', error);
-        let errorMessage = 'Location access denied. ';
-        
-        switch(error.code) {
-          case error.PERMISSION_DENIED:
-            errorMessage += 'Please enable location in Settings > Safari > Location Services, or skip to manual selection.';
-            break;
-          case error.POSITION_UNAVAILABLE:
-            errorMessage += 'Location information is unavailable.';
-            break;
-          case error.TIMEOUT:
-            errorMessage += 'Location request timed out.';
-            break;
-          default:
-            errorMessage += 'An unknown error occurred.';
-        }
-        
-        setLocationError(errorMessage);
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 0
+  // Set destination when location is granted and we have an initial locate
+  useEffect(() => {
+    if (locationGranted && initialLocateRef.current) {
+      const locateId = initialLocateRef.current;
+      initialLocateRef.current = null; // Clear so it doesn't trigger again
+      
+      // Map the department ID to the room ID
+      const roomId = departmentIdMapping[locateId] || locateId;
+      const location = locations.find(l => l.id === roomId);
+      if (location) {
+        // Use setTimeout to avoid synchronous setState in effect
+        setTimeout(() => {
+          setSelectedDestination(location);
+          setFocusTrigger(prev => prev + 1);
+        }, 100);
       }
-    );
+    }
+  }, [locationGranted]);
+
+  const navigateWithLoader = (path: string, text: string) => {
+    setLoadingText(text);
+    setIsLoading(true);
+    setTimeout(() => {
+      router.push(path);
+    }, 2000);
+  };
+
+  const handleRecenter = useCallback(() => {
+    setRecenterTrigger(prev => prev + 1);
+    setFollowMode(true);
+  }, []);
+
+  // Handle destination selection - auto focus on building
+  const handleSelectDestination = useCallback((location: typeof locations[0]) => {
+    setSelectedDestination(location);
+    setIsDropdownOpen(false);
+    // Trigger focus on the building
+    setFocusTrigger(prev => prev + 1);
+  }, []);
+
+  const requestLocation = async () => {
+    setIsRequestingLocation(true);
+    setLocationError(null);
+
+    // Check if geolocation is supported
+    if (!navigator.geolocation) {
+      setLocationError('Geolocation not supported. Proceeding to map...');
+      setTimeout(() => setLocationGranted(true), 1000);
+      return;
+    }
+
+    // Use a promise wrapper for better control
+    const getPosition = (): Promise<GeolocationPosition> => {
+      return new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: false, // Start with low accuracy for faster response
+          timeout: 5000, // 5 second timeout
+          maximumAge: 300000 // Accept cached position up to 5 minutes old
+        });
+      });
+    };
+
+    try {
+      const position = await getPosition();
+      console.log('Location obtained:', position.coords.latitude, position.coords.longitude);
+      setIsRequestingLocation(false);
+      setLocationGranted(true);
+    } catch (error) {
+      console.log('Geolocation error, proceeding anyway:', error);
+      setIsRequestingLocation(false);
+      // Don't show error, just proceed - the map will handle GPS
+      setLocationGranted(true);
+    }
   };
 
   const skipLocation = () => {
@@ -111,24 +237,28 @@ export default function NavigationPage() {
     if (selectedDestination) {
       setIsNavigating(true);
       setIsDropdownOpen(false);
-      setIsPanelOpen(true);
+      setFollowMode(true);
     }
   };
 
   if (!locationGranted) {
     return (
       <div className="fixed inset-0 bg-white flex flex-col items-center justify-center p-6">
+        {/* Full Screen Loader */}
+        {isLoading && <Loader text={loadingText} />}
+        
         {/* Back button */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           className="absolute top-4 left-4"
         >
-          <Link href="/">
-            <button className="flex items-center gap-2 p-2 rounded-full hover:bg-gray-100 transition-all">
-              <ArrowLeft className="w-5 h-5 text-gray-600" />
-            </button>
-          </Link>
+          <button 
+            onClick={() => navigateWithLoader('/', 'Going back...')}
+            className="flex items-center gap-2 p-2 rounded-full hover:bg-gray-100 transition-all cursor-pointer"
+          >
+            <ArrowLeft className="w-5 h-5 text-gray-600" />
+          </button>
         </motion.div>
 
         <motion.div
@@ -198,16 +328,24 @@ export default function NavigationPage() {
           <div className="w-full space-y-4">
             <button
               onClick={requestLocation}
-              className="w-full bg-[#c94a4a] hover:bg-[#b43d3d] text-white font-semibold py-4 px-6 rounded-full transition-all transform hover:scale-[1.02] shadow-lg text-sm tracking-wide"
+              disabled={isRequestingLocation}
+              className={`w-full bg-[#c94a4a] hover:bg-[#b43d3d] text-white font-semibold py-4 px-6 rounded-full transition-all transform hover:scale-[1.02] shadow-lg text-sm tracking-wide flex items-center justify-center gap-2 ${isRequestingLocation ? 'opacity-80 cursor-wait' : ''}`}
             >
-              Turn on Location Services
+              {isRequestingLocation ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Getting Location...
+                </>
+              ) : (
+                'Turn on Location Services'
+              )}
             </button>
             
             <button
               onClick={skipLocation}
               className="w-full text-gray-500 hover:text-gray-700 font-medium py-3 px-6 transition-all text-sm"
             >
-              No, other Time
+              Skip for now
             </button>
           </div>
         </motion.div>
@@ -218,46 +356,70 @@ export default function NavigationPage() {
   return (
     <div className="fixed inset-0 bg-gray-100 overflow-hidden">
       {/* Back button - floating on map */}
+      {/* Full Screen Loader */}
+      {isLoading && <Loader text={loadingText} />}
+      
       <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.3 }}
         className="absolute top-4 left-4 z-50"
       >
-        <Link href="/">
-          <button className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-white shadow-lg hover:shadow-xl transition-all group cursor-pointer border border-gray-200">
-            <ArrowLeft className="w-4 h-4 text-gray-700 group-hover:-translate-x-1 transition-transform" />
-          </button>
-        </Link>
+        <button 
+          onClick={() => navigateWithLoader('/', 'Going back...')}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-white shadow-lg hover:shadow-xl hover:bg-gray-50 active:scale-90 active:bg-gray-100 transition-all duration-150 group cursor-pointer border border-gray-200"
+        >
+          <ArrowLeft className="w-4 h-4 text-gray-700 group-hover:-translate-x-1 transition-transform" />
+          <span className="text-sm font-medium text-gray-700">Home</span>
+        </button>
       </motion.div>
 
-      {/* Building Selector Dropdown - Top Center */}
+      {/* Building Selector Dropdown - Top Center - Hide when navigating */}
+      <AnimatePresence>
+      {!isNavigating && (
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -20 }}
         className="absolute top-4 left-1/2 -translate-x-1/2 z-50 w-full max-w-md px-3 sm:px-4"
       >
-        <div className="bg-white rounded-xl sm:rounded-2xl shadow-xl overflow-hidden">
+        <div 
+          className="rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden border border-white/30"
+          style={{
+            background: 'rgba(255, 255, 255, 0.85)',
+            backdropFilter: 'blur(20px)',
+            WebkitBackdropFilter: 'blur(20px)',
+          }}
+        >
           {/* Dropdown Header */}
           <button
             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-            className="w-full px-3 sm:px-4 py-2.5 sm:py-3 flex items-center justify-between hover:bg-gray-50 transition-colors"
+            className="w-full px-4 sm:px-5 py-3 sm:py-4 flex items-center justify-between hover:bg-white/50 transition-colors"
           >
-            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-              <MapPin className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 shrink-0" />
+            <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+              <div 
+                className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center shrink-0"
+                style={{
+                  background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
+                }}
+              >
+                <MapPin className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+              </div>
               <div className="text-left min-w-0">
-                <p className="text-xs sm:text-sm font-semibold text-gray-900 truncate">
+                <p className="text-sm sm:text-base font-semibold text-gray-900 truncate">
                   {selectedDestination ? selectedDestination.name : 'Select Destination'}
                 </p>
-                {selectedDestination && (
-                  <p className="text-[10px] sm:text-xs text-gray-500 truncate">
+                {selectedDestination ? (
+                  <p className="text-xs sm:text-sm text-gray-500 truncate">
                     {selectedDestination.floor} • {selectedDestination.section}
                   </p>
+                ) : (
+                  <p className="text-xs sm:text-sm text-gray-400">Tap to choose where to go</p>
                 )}
               </div>
             </div>
             <ChevronDown
-              className={`w-4 h-4 sm:w-5 sm:h-5 text-gray-400 transition-transform shrink-0 ${
+              className={`w-5 h-5 sm:w-6 sm:h-6 text-gray-400 transition-transform shrink-0 ${
                 isDropdownOpen ? 'rotate-180' : ''
               }`}
             />
@@ -271,29 +433,26 @@ export default function NavigationPage() {
                 animate={{ height: 'auto', opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
                 transition={{ duration: 0.2 }}
-                className="border-t border-gray-200 overflow-hidden"
+                className="border-t border-gray-200/50 overflow-hidden"
               >
-                <div className="max-h-96 overflow-y-auto">
+                <div className="max-h-80 overflow-y-auto">
                   {locations.map((location) => (
                     <button
                       key={location.id}
-                      onClick={() => {
-                        setSelectedDestination(location);
-                        setIsDropdownOpen(false);
-                      }}
-                      className={`w-full px-3 sm:px-4 py-2.5 sm:py-3 text-left hover:bg-purple-50 transition-colors border-b border-gray-100 last:border-b-0 ${
-                        selectedDestination?.id === location.id ? 'bg-purple-50' : ''
+                      onClick={() => handleSelectDestination(location)}
+                      className={`w-full px-4 sm:px-5 py-3 sm:py-3.5 text-left hover:bg-white/60 transition-colors border-b border-gray-100/50 last:border-b-0 ${
+                        selectedDestination?.id === location.id ? 'bg-green-50/80' : ''
                       }`}
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div className="min-w-0 flex-1">
-                          <p className="text-xs sm:text-sm font-medium text-gray-900 truncate">{location.name}</p>
-                          <p className="text-[10px] sm:text-xs text-gray-500 truncate">
+                          <p className="text-sm sm:text-base font-medium text-gray-900 truncate">{location.name}</p>
+                          <p className="text-xs sm:text-sm text-gray-500 truncate">
                             {location.floor} • {location.section}
                           </p>
                         </div>
                         <span
-                          className={`text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full shrink-0 ${
+                          className={`text-[10px] sm:text-xs px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-full shrink-0 font-medium ${
                             location.category === 'Emergency'
                               ? 'bg-red-100 text-red-700'
                               : location.category === 'Department'
@@ -318,141 +477,274 @@ export default function NavigationPage() {
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="p-2 sm:p-3 border-t border-gray-200"
+              className="p-3 sm:p-4 border-t border-gray-200/50"
             >
               <button
                 onClick={startNavigation}
-                className="w-full bg-linear-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-semibold py-2.5 sm:py-3 px-3 sm:px-4 rounded-xl transition-all flex items-center justify-center gap-2 text-sm sm:text-base"
+                className="w-full text-white font-semibold py-3 sm:py-3.5 px-4 sm:px-5 rounded-xl transition-all duration-150 flex items-center justify-center gap-2 text-sm sm:text-base shadow-lg hover:shadow-xl hover:opacity-90 active:scale-[0.98] active:opacity-100 cursor-pointer"
+                style={{
+                  background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
+                }}
               >
-                <Navigation className="w-4 h-4" />
+                <Navigation className="w-5 h-5" />
                 Start Navigation
               </button>
             </motion.div>
           )}
         </div>
       </motion.div>
+      )}
+      </AnimatePresence>
 
       {/* Full-screen Map */}
       <div className="absolute inset-0">
         <InteractiveMapLeaflet 
           isDarkMode={false} 
           fullScreen 
-          selectedLocationId={isNavigating ? selectedDestination?.id : undefined}
+          selectedLocationId={isNavigating ? selectedDestination?.id : selectedDestination?.id}
           onDistanceUpdate={setDistance}
+          recenterTrigger={recenterTrigger}
+          followMode={followMode}
+          onMapInteraction={() => setFollowMode(false)}
+          focusTrigger={focusTrigger}
         />
       </div>
 
-      {/* Swipeable Bottom Panel - Only show when navigating */}
-      {isNavigating && selectedDestination && (
-      <motion.div
-        initial={{ y: '100%' }}
-        animate={{ y: isPanelOpen ? '0%' : 'calc(100% - 120px)' }}
-        drag="y"
-        dragConstraints={{ top: 0, bottom: 0 }}
-        dragElastic={0.2}
-        onDragEnd={(_, info) => {
-          if (info.offset.y < -100) {
-            setIsPanelOpen(true);
-          } else if (info.offset.y > 100) {
-            setIsPanelOpen(false);
-          }
-        }}
-        transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-        className="absolute bottom-0 left-0 right-0 z-40 bg-white rounded-t-3xl shadow-2xl"
-        style={{ height: '70vh' }}
-      >
-        {/* Drag Handle */}
-        <div className="flex justify-center py-3 cursor-grab active:cursor-grabbing">
-          <div className="w-12 h-1.5 bg-gray-300 rounded-full" />
-        </div>
-
-        {/* Panel Header */}
-        <div className="px-4 sm:px-6 pb-3 sm:pb-4 border-b border-gray-200">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-purple-500 rounded-full flex items-center justify-center shrink-0">
-                <MapPin className="w-4 h-4 sm:w-5 sm:h-5 text-white" fill="currentColor" />
-              </div>
-              <div className="min-w-0">
-                <h2 className="text-base sm:text-lg font-bold text-gray-900 truncate">{selectedDestination.name}</h2>
-                <p className="text-[10px] sm:text-xs text-gray-500 truncate">
-                  {selectedDestination.floor} • {selectedDestination.section}
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => setIsPanelOpen(!isPanelOpen)}
-              className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-full transition-colors shrink-0"
+      {/* Collapsible Staff Panel - Left side */}
+      <AnimatePresence>
+        {selectedDestination && !isNavigating && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="absolute left-0 top-1/2 -translate-y-1/2 z-40 flex items-center"
+          >
+            {/* Panel Container */}
+            <motion.div
+              initial={false}
+              animate={{ x: isPanelOpen ? 0 : -288 }}
+              transition={{ type: 'spring', damping: 28, stiffness: 350 }}
+              className="flex items-center"
             >
-              <ChevronUp
-                className={`w-4 h-4 sm:w-5 sm:h-5 text-gray-600 transition-transform ${
-                  isPanelOpen ? 'rotate-180' : ''
-                }`}
-              />
-            </button>
-          </div>
-        </div>
-
-        {/* Panel Content */}
-        <div className="px-4 sm:px-6 py-3 sm:py-4 overflow-y-auto" style={{ maxHeight: 'calc(70vh - 140px)' }}>
-          <div className="space-y-3 sm:space-y-4">
-            <div>
-              <h3 className="text-xs sm:text-sm font-semibold text-gray-700 mb-2">Route Information</h3>
-              <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                <div className="bg-blue-50 rounded-xl p-2 sm:p-3">
-                  <p className="text-[10px] sm:text-xs text-blue-600 mb-0.5 sm:mb-1">Distance</p>
-                  <p className="text-sm sm:text-lg font-bold text-blue-900">
-                    {distance !== null ? `${distance.toFixed(1)}m` : 'Calculating...'}
-                  </p>
+              {/* Panel Content */}
+              <div 
+                className="w-72 sm:w-72 max-h-[60vh] rounded-r-2xl shadow-2xl border border-white/30 border-l-0 overflow-hidden"
+                style={{
+                  background: 'rgba(255, 255, 255, 0.92)',
+                  backdropFilter: 'blur(20px)',
+                  WebkitBackdropFilter: 'blur(20px)',
+                }}
+              >
+                {/* Panel Header */}
+                <div className="px-4 py-3 border-b border-gray-200/50">
+                  <h3 className="text-sm font-semibold text-gray-900 truncate">{selectedDestination.name}</h3>
+                  <p className="text-xs text-gray-500">Staff & Contact</p>
                 </div>
-                <div className="bg-green-50 rounded-xl p-2 sm:p-3">
-                  <p className="text-[10px] sm:text-xs text-green-600 mb-0.5 sm:mb-1">ETA</p>
-                  <p className="text-sm sm:text-lg font-bold text-green-900">
-                    {distance !== null ? `~${Math.ceil(distance / 1.4)}s` : '~2 min'}
-                  </p>
+
+                {/* Staff List */}
+                <div className="max-h-[calc(60vh-60px)] overflow-y-auto">
+                  {departmentStaff[selectedDestination.id]?.length > 0 ? (
+                    <div className="p-3 space-y-2">
+                      {departmentStaff[selectedDestination.id].map((staff, index) => (
+                        <div 
+                          key={index}
+                          className="p-3 rounded-xl bg-gray-50/80 hover:bg-gray-100/80 transition-colors"
+                        >
+                          <div className="flex items-start gap-3">
+                            <div 
+                              className="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
+                              style={{
+                                background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
+                              }}
+                            >
+                              <User className="w-4 h-4 text-white" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-medium text-gray-900 truncate">{staff.name}</p>
+                              <p className="text-xs text-gray-500">{staff.role}</p>
+                              {staff.email && (
+                                <a 
+                                  href={`mailto:${staff.email}`}
+                                  className="flex items-center gap-1.5 mt-1.5 text-xs text-green-600 hover:text-green-700 transition-colors"
+                                >
+                                  <Mail className="w-3 h-3" />
+                                  <span className="truncate">{staff.email}</span>
+                                </a>
+                              )}
+                              {staff.phone && (
+                                <a 
+                                  href={`tel:${staff.phone}`}
+                                  className="flex items-center gap-1.5 mt-1 text-xs text-green-600 hover:text-green-700 transition-colors"
+                                >
+                                  <Phone className="w-3 h-3" />
+                                  <span>{staff.phone}</span>
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-6 text-center">
+                      <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
+                        <User className="w-6 h-6 text-gray-400" />
+                      </div>
+                      <p className="text-sm text-gray-500">No staff information available</p>
+                    </div>
+                  )}
                 </div>
               </div>
-            </div>
 
-            <div>
-              <h3 className="text-xs sm:text-sm font-semibold text-gray-700 mb-2">Directions</h3>
-              <div className="space-y-2">
-                <div className="flex items-start gap-2 sm:gap-3 p-2 sm:p-3 bg-purple-50 rounded-xl border-l-4 border-purple-500">
-                  <div className="w-6 h-6 sm:w-8 sm:h-8 bg-purple-500 rounded-full flex items-center justify-center shrink-0">
-                    <Navigation className="w-3 h-3 sm:w-4 sm:h-4 text-white" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-xs sm:text-sm font-medium text-gray-900">Follow the purple path on the map</p>
-                    <p className="text-[10px] sm:text-xs text-gray-500">Your live location is being tracked</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-2 sm:gap-3 p-2 sm:p-3 bg-gray-50 rounded-xl">
-                  <div className="w-6 h-6 sm:w-8 sm:h-8 bg-purple-500 rounded-full flex items-center justify-center shrink-0">
-                    <span className="text-white text-[10px] sm:text-xs font-bold">1</span>
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-xs sm:text-sm font-medium text-gray-900">Navigate to {selectedDestination.name}</p>
-                    <p className="text-[10px] sm:text-xs text-gray-500 truncate">Located at {selectedDestination.floor}, {selectedDestination.section}</p>
-                  </div>
-                </div>
-              </div>
-            </div>
+              {/* Toggle Button - Attached to panel */}
+              <button
+                onClick={() => setIsPanelOpen(!isPanelOpen)}
+                className="h-16 w-7 flex items-center justify-center rounded-r-lg shadow-lg cursor-pointer hover:w-8 transition-all -ml-px"
+                style={{
+                  background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
+                }}
+              >
+                {isPanelOpen ? (
+                  <ChevronLeft className="w-4 h-4 text-white" />
+                ) : (
+                  <ChevronRight className="w-4 h-4 text-white" />
+                )}
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-            {/* Stop Navigation Button */}
-            <button
-              onClick={() => {
-                setIsNavigating(false);
-                setSelectedDestination(null);
-                setIsPanelOpen(false);
+      {/* Glassmorphism Direction Card - Bottom center when navigating */}
+      <AnimatePresence>
+        {isNavigating && selectedDestination && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 50, scale: 0.9 }}
+            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            className="absolute bottom-6 left-4 right-4 z-40 flex flex-col items-center gap-3"
+          >
+            {/* Main Direction Card with Glassmorphism */}
+            <div 
+              className="w-full max-w-sm rounded-3xl p-4 sm:p-5 shadow-2xl border border-white/30"
+              style={{
+                background: 'rgba(255, 255, 255, 0.85)',
+                backdropFilter: 'blur(20px)',
+                WebkitBackdropFilter: 'blur(20px)',
               }}
-              className="w-full bg-red-500 hover:bg-red-600 text-white font-semibold py-2.5 sm:py-3 px-3 sm:px-4 rounded-xl transition-all text-sm sm:text-base"
             >
-              Stop Navigation
-            </button>
-          </div>
-        </div>
-      </motion.div>
-      )}
+              <div className="flex items-center gap-4">
+                {/* Turn Arrow Icon - Green theme */}
+                <div className="shrink-0">
+                  <div 
+                    className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center"
+                    style={{
+                      background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
+                    }}
+                  >
+                    <CornerUpRight className="w-7 h-7 sm:w-8 sm:h-8 text-white" strokeWidth={2.5} />
+                  </div>
+                </div>
+
+                {/* Distance and Destination */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-4xl sm:text-5xl font-bold text-gray-900">
+                      {distance !== null ? Math.round(distance) : '...'}
+                    </span>
+                    <span className="text-xl sm:text-2xl font-semibold text-gray-700">m</span>
+                  </div>
+                  <p className="text-sm sm:text-base text-gray-600 font-medium truncate mt-0.5">
+                    {selectedDestination.name}
+                  </p>
+                </div>
+              </div>
+
+              {/* ETA Row */}
+              <div className="mt-3 pt-3 border-t border-gray-200/50 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                  <span className="text-xs sm:text-sm text-gray-500">
+                    ETA: ~{distance !== null ? Math.ceil(distance / 1.4) : '...'} sec walking
+                  </span>
+                </div>
+                <span className="text-xs text-gray-400">Live tracking</span>
+              </div>
+
+              {/* Stop Navigation Button - Emphasized */}
+              <button
+                onClick={() => {
+                  setIsNavigating(false);
+                  setSelectedDestination(null);
+                  setFollowMode(false);
+                }}
+                className="mt-4 w-full py-3 rounded-xl flex items-center justify-center gap-2 font-semibold text-white transition-all duration-150 hover:opacity-90 hover:shadow-xl active:scale-[0.96] cursor-pointer"
+                style={{
+                  background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                  boxShadow: '0 4px 14px rgba(239, 68, 68, 0.4)'
+                }}
+              >
+                <XCircle className="w-5 h-5" />
+                Stop Navigating
+              </button>
+            </div>
+
+            {/* Recenter Button - Green theme */}
+            <motion.button
+              onClick={handleRecenter}
+              whileTap={{ scale: 0.92 }}
+              whileHover={{ scale: 1.02 }}
+              className={`flex items-center gap-2 px-5 py-3 rounded-full shadow-lg transition-all duration-150 cursor-pointer ${
+                followMode 
+                  ? 'text-white hover:shadow-xl' 
+                  : 'bg-white/90 text-gray-700 hover:bg-white hover:shadow-xl'
+              }`}
+              style={{
+                backdropFilter: 'blur(10px)',
+                WebkitBackdropFilter: 'blur(10px)',
+                ...(followMode && { background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)' }),
+              }}
+            >
+              <LocateFixed className={`w-5 h-5 ${followMode ? 'text-white' : 'text-green-500'}`} />
+              <span className="text-sm font-medium">
+                {followMode ? 'Following' : 'Re-center'}
+              </span>
+            </motion.button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Compass/North Button - Top Right when navigating */}
+      <AnimatePresence>
+        {isNavigating && (
+          <motion.button
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.8 }}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.92 }}
+            onClick={handleRecenter}
+            className="absolute top-4 right-4 z-50 w-12 h-12 rounded-full bg-white/90 shadow-lg flex items-center justify-center hover:bg-white hover:shadow-xl transition-all duration-150 cursor-pointer"
+            style={{
+              backdropFilter: 'blur(10px)',
+              WebkitBackdropFilter: 'blur(10px)',
+            }}
+          >
+            <Compass className="w-6 h-6 text-gray-700" />
+          </motion.button>
+        )}
+      </AnimatePresence>
     </div>
+  );
+}
+
+// Wrap in Suspense because of useSearchParams
+export default function NavigationPage() {
+  return (
+    <Suspense fallback={<Loader text="Loading navigation..." />}>
+      <NavigationPageContent />
+    </Suspense>
   );
 }

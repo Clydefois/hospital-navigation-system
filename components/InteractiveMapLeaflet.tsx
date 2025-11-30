@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { ZoomIn, ZoomOut, Layers, Navigation, Crosshair } from 'lucide-react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import Loader from './Loader';
 
 // ============================================================
 // 🔧 FLOOR PLAN GPS CALIBRATION - YOUR SCHOOL
@@ -44,6 +44,70 @@ interface Room {
   isLShaped?: boolean; // for L-shaped rooms like Surgery Dept
   isUShaped?: boolean; // for U-shaped rooms like Emergency Room
 }
+
+// Building descriptions with emails
+const buildingDescriptions: Record<string, { description: string; email?: string }> = {
+  '17': {
+    description: 'Comprehensive care for skin, hair, and nail concerns, offering medical, surgical, and cosmetic dermatology services.',
+    email: 'dermatologycmz@gmail.com'
+  },
+  '2': {
+    description: 'Specialized diagnosis and treatment for kidney diseases, including acute and chronic kidney disease.',
+    email: 'nephrologycmz@gmail.com'
+  },
+  '5': {
+    description: 'Eye care services for vision problems, eye injuries, and diseases.',
+    email: 'ophthalmologycmz@gmail.com'
+  },
+  '16': {
+    description: 'Provides a wide range of testing and diagnostic services to support medical care and treatment.',
+    email: 'laboratorycmz@gmail.com'
+  },
+  '15': {
+    description: 'Offers advanced heart and lung care with diagnostics and personalized treatment plans.',
+    email: 'cardiopulmonarycmz@gmail.com'
+  },
+  '6': {
+    description: 'Diagnosis and treatment of the nervous system disorders, including the brain, nerves, spinal cord, and muscles.',
+    email: 'neurologycmz@gmail.com'
+  },
+  '10': {
+    description: 'Provides comprehensive medical care for infants and children, including routine checkups, vaccinations, and treatment for illnesses.',
+    email: 'pediatricscmz@gmail.com'
+  },
+  '9': {
+    description: 'Provides a full spectrum of surgical procedures with pre-operative and post-operative care.',
+    email: 'surgerycmz@gmail.com'
+  },
+  '11': {
+    description: 'Expert treatment for musculoskeletal system including bone, joint, and muscle conditions.',
+    email: 'orthopediccmz@gmail.com'
+  },
+  '12': {
+    description: 'Diagnostic imaging services including X-ray, ultrasound, CT, and MRI scans.',
+    email: 'radiologycmz@gmail.com'
+  },
+  '18': {
+    description: 'Consultation offices for various medical specialists providing scheduled appointments.',
+    email: 'doctorscliniccmz@gmail.com'
+  },
+  '14': {
+    description: '24/7 emergency medical services for urgent and life-threatening conditions.',
+    email: 'emergencycmz@gmail.com'
+  },
+  '13': {
+    description: 'A quiet, reflective space for spiritual support, prayer, and family gatherings.'
+  },
+  '7': {
+    description: 'Clean and well-maintained restroom facility for patients and visitors, equipped for personal hygiene and sanitation needs.'
+  },
+  '8': {
+    description: 'Dining area offering meals, snacks, and refreshments for patients, visitors, and staff.'
+  },
+  'parking': {
+    description: 'Designated parking area for hospital visitors and staff. Please follow parking guidelines and display your parking pass.'
+  }
+};
 
 // Rooms positioned to match the floor plan image exactly
 // The GPS bounds cover the Ateneo de Zamboanga campus - rooms placed on actual structures
@@ -142,7 +206,7 @@ const pathways: Pathway[] = [
   { x: 0.04, y: 0.08, width: 0.28, height: 0.06 },
 ];
 
-// Convert relative position to GPS coordinates using bilinear interpolation
+//  rElative position to GPS coordinates using INTERPOLATION OKAY!
 function relToGps(relX: number, relY: number): { lat: number; lng: number } {
   const { topLeft, topRight, bottomLeft, bottomRight } = GPS_CORNERS;
   
@@ -180,19 +244,19 @@ function gpsToRel(lat: number, lng: number): { x: number; y: number } {
                    (1 - x) * y * bottomLeft.lng +
                    x * y * bottomRight.lng;
     
-    // Error
+    // Error hanadling 
     const errLat = lat - estLat;
     const errLng = lng - estLng;
     
     if (Math.abs(errLat) < 1e-10 && Math.abs(errLng) < 1e-10) break;
     
-    // Jacobian partial derivatives
+    // Formula from derivates ni google haha
     const dLatDx = -(1 - y) * topLeft.lat + (1 - y) * topRight.lat - y * bottomLeft.lat + y * bottomRight.lat;
     const dLatDy = -(1 - x) * topLeft.lat - x * topRight.lat + (1 - x) * bottomLeft.lat + x * bottomRight.lat;
     const dLngDx = -(1 - y) * topLeft.lng + (1 - y) * topRight.lng - y * bottomLeft.lng + y * bottomRight.lng;
     const dLngDy = -(1 - x) * topLeft.lng - x * topRight.lng + (1 - x) * bottomLeft.lng + x * bottomRight.lng;
     
-    // Solve 2x2 system
+    // Solve 2x2 problemmmmm nb
     const det = dLatDx * dLngDy - dLatDy * dLngDx;
     if (Math.abs(det) < 1e-15) break;
     
@@ -207,267 +271,286 @@ function gpsToRel(lat: number, lng: number): { x: number; y: number } {
   return { x, y };
 }
 
-// A* Pathfinding types
-interface PathNode {
+// ============================================================================
+// ROAD-BASED PATHFINDING SYSTEM
+// Path MUST follow roads - never cut through buildings
+// ============================================================================
+
+// Road network node - represents a point on the road network
+interface RoadNode {
+  id: string;
   x: number;
   y: number;
-  g: number; // Cost from start
-  h: number; // Heuristic cost to end
-  f: number; // Total cost (g + h)
-  parent: PathNode | null;
+  roadId: string;  // Which road this node belongs to
 }
 
-// Check if a line segment intersects with a room
-function lineIntersectsRoom(x1: number, y1: number, x2: number, y2: number, room: Room, margin: number = 0.01): boolean {
-  // Room coordinates are center-based, so calculate boundaries
-  const rx1 = room.x - room.width / 2 - margin;
-  const rx2 = room.x + room.width / 2 + margin;
-  const ry1 = room.y - room.height / 2 - margin;
-  const ry2 = room.y + room.height / 2 + margin;
+// Road network edge - connection between two nodes ON THE SAME ROAD or at intersections
+interface RoadEdge {
+  from: string;
+  to: string;
+  distance: number;
+}
+
+// Build the road network graph
+function buildRoadNetwork(roads: Pathway[]): { nodes: RoadNode[], edges: RoadEdge[] } {
+  const nodes: RoadNode[] = [];
+  const edges: RoadEdge[] = [];
+  const nodeMap = new Map<string, RoadNode>();
   
-  // Check if either endpoint is inside the room
-  if ((x1 >= rx1 && x1 <= rx2 && y1 >= ry1 && y1 <= ry2) ||
-      (x2 >= rx1 && x2 <= rx2 && y2 >= ry1 && y2 <= ry2)) {
-    return true;
+  // Helper to create unique node ID
+  const makeNodeId = (x: number, y: number) => `${x.toFixed(3)}_${y.toFixed(3)}`;
+  
+  // Helper to add node if not exists, return the id
+  const addNode = (x: number, y: number, roadId: string): string => {
+    const id = makeNodeId(x, y);
+    if (!nodeMap.has(id)) {
+      const node: RoadNode = { id, x, y, roadId };
+      nodes.push(node);
+      nodeMap.set(id, node);
+    }
+    return id;
+  };
+  
+  // Helper to add edge (bidirectional)
+  const addEdge = (id1: string, id2: string) => {
+    const n1 = nodeMap.get(id1);
+    const n2 = nodeMap.get(id2);
+    if (n1 && n2 && id1 !== id2) {
+      const dist = Math.sqrt((n2.x - n1.x) ** 2 + (n2.y - n1.y) ** 2);
+      // Avoid duplicate edges
+      const existsForward = edges.some(e => e.from === id1 && e.to === id2);
+      const existsBackward = edges.some(e => e.from === id2 && e.to === id1);
+      if (!existsForward) edges.push({ from: id1, to: id2, distance: dist });
+      if (!existsBackward) edges.push({ from: id2, to: id1, distance: dist });
+    }
+  };
+  
+  // Get only actual roads (not walls)
+  const actualRoads = roads.filter(r => r.label);
+  
+  // For each road, create nodes along the centerline
+  const roadNodes: Map<string, string[]> = new Map(); // roadLabel -> array of node IDs
+  
+  for (const road of actualRoads) {
+    const roadId = road.label!;
+    const isHorizontal = road.width > road.height;
+    const nodesForRoad: string[] = [];
+    
+    if (isHorizontal) {
+      // Horizontal road - nodes along horizontal center
+      const centerY = road.y + road.height / 2;
+      
+      // Create nodes every 0.03 units for fine-grained path
+      for (let x = road.x; x <= road.x + road.width + 0.001; x += 0.03) {
+        const clampedX = Math.min(x, road.x + road.width);
+        const nodeId = addNode(clampedX, centerY, roadId);
+        nodesForRoad.push(nodeId);
+      }
+      // Ensure end point is included
+      const endId = addNode(road.x + road.width, centerY, roadId);
+      if (!nodesForRoad.includes(endId)) nodesForRoad.push(endId);
+      
+    } else {
+      // Vertical road - nodes along vertical center
+      const centerX = road.x + road.width / 2;
+      
+      for (let y = road.y; y <= road.y + road.height + 0.001; y += 0.03) {
+        const clampedY = Math.min(y, road.y + road.height);
+        const nodeId = addNode(centerX, clampedY, roadId);
+        nodesForRoad.push(nodeId);
+      }
+      // Ensure end point is included
+      const endId = addNode(centerX, road.y + road.height, roadId);
+      if (!nodesForRoad.includes(endId)) nodesForRoad.push(endId);
+    }
+    
+    // Connect consecutive nodes along this road
+    for (let i = 0; i < nodesForRoad.length - 1; i++) {
+      addEdge(nodesForRoad[i], nodesForRoad[i + 1]);
+    }
+    
+    roadNodes.set(roadId, nodesForRoad);
   }
   
-  // Check line-rectangle intersection using separating axis theorem
-  const dx = x2 - x1;
-  const dy = y2 - y1;
+  // Connect roads at intersections by finding nearby nodes from different roads
+  const CONNECTION_THRESHOLD = 0.04; // Maximum distance to connect nodes from different roads
   
-  // Check intersection with rectangle edges
-  const rectEdges = [
-    [[rx1, ry1], [rx2, ry1]], // Top
-    [[rx2, ry1], [rx2, ry2]], // Right
-    [[rx2, ry2], [rx1, ry2]], // Bottom
-    [[rx1, ry2], [rx1, ry1]]  // Left
-  ];
-  
-  for (const edge of rectEdges) {
-    const [[ex1, ey1], [ex2, ey2]] = edge;
-    const edx = ex2 - ex1;
-    const edy = ey2 - ey1;
-    
-    const denom = dx * edy - dy * edx;
-    if (Math.abs(denom) < 1e-10) continue;
-    
-    const t = ((ex1 - x1) * edy - (ey1 - y1) * edx) / denom;
-    const u = ((ex1 - x1) * dy - (ey1 - y1) * dx) / denom;
-    
-    if (t >= 0 && t <= 1 && u >= 0 && u <= 1) {
-      return true;
+  for (let i = 0; i < nodes.length; i++) {
+    for (let j = i + 1; j < nodes.length; j++) {
+      const n1 = nodes[i];
+      const n2 = nodes[j];
+      
+      // Only connect nodes from DIFFERENT roads
+      if (n1.roadId === n2.roadId) continue;
+      
+      const dist = Math.sqrt((n1.x - n2.x) ** 2 + (n1.y - n2.y) ** 2);
+      
+      // Connect if within threshold
+      if (dist < CONNECTION_THRESHOLD) {
+        addEdge(n1.id, n2.id);
+      }
     }
   }
   
-  return false;
+  console.log(`Built road network: ${nodes.length} nodes, ${edges.length} edges`);
+  
+  return { nodes, edges };
 }
 
-// Check if a path segment is valid (doesn't go through buildings)
-function isPathClear(x1: number, y1: number, x2: number, y2: number, obstacles: Room[]): boolean {
-  for (const room of obstacles) {
-    if (lineIntersectsRoom(x1, y1, x2, y2, room)) {
-      return false;
+// Find path through road network using Dijkstra's algorithm
+function findPathOnRoads(
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+  roads: Pathway[]
+): { x: number; y: number }[] {
+  console.log('=== ROAD-BASED PATHFINDING ===');
+  console.log('Start:', start, 'End:', end);
+  
+  // Build road network
+  const { nodes, edges } = buildRoadNetwork(roads);
+  console.log(`Road network: ${nodes.length} nodes, ${edges.length} edges`);
+  
+  // Find nearest road node to start
+  let nearestStartNode: RoadNode | null = null;
+  let nearestStartDist = Infinity;
+  
+  for (const node of nodes) {
+    const dist = Math.sqrt((node.x - start.x) ** 2 + (node.y - start.y) ** 2);
+    if (dist < nearestStartDist) {
+      nearestStartDist = dist;
+      nearestStartNode = node;
     }
   }
-  return true;
+  
+  // Find nearest road node to end
+  let nearestEndNode: RoadNode | null = null;
+  let nearestEndDist = Infinity;
+  
+  for (const node of nodes) {
+    const dist = Math.sqrt((node.x - end.x) ** 2 + (node.y - end.y) ** 2);
+    if (dist < nearestEndDist) {
+      nearestEndDist = dist;
+      nearestEndNode = node;
+    }
+  }
+  
+  if (!nearestStartNode || !nearestEndNode) {
+    console.log('Could not find road nodes near start/end');
+    return [start, end];
+  }
+  
+  console.log(`Nearest start node: ${nearestStartNode.id} (dist: ${nearestStartDist.toFixed(3)})`);
+  console.log(`Nearest end node: ${nearestEndNode.id} (dist: ${nearestEndDist.toFixed(3)})`);
+  
+  // Build adjacency list from edges
+  const adjacency = new Map<string, { nodeId: string; dist: number }[]>();
+  for (const node of nodes) {
+    adjacency.set(node.id, []);
+  }
+  for (const edge of edges) {
+    adjacency.get(edge.from)?.push({ nodeId: edge.to, dist: edge.distance });
+  }
+  
+  // Dijkstra's algorithm
+  const distances = new Map<string, number>();
+  const previous = new Map<string, string | null>();
+  const visited = new Set<string>();
+  
+  for (const node of nodes) {
+    distances.set(node.id, Infinity);
+    previous.set(node.id, null);
+  }
+  distances.set(nearestStartNode.id, 0);
+  
+  // Priority queue (simple implementation)
+  const queue = [nearestStartNode.id];
+  
+  while (queue.length > 0) {
+    // Find node with minimum distance
+    let minDist = Infinity;
+    let minIdx = 0;
+    for (let i = 0; i < queue.length; i++) {
+      const d = distances.get(queue[i])!;
+      if (d < minDist) {
+        minDist = d;
+        minIdx = i;
+      }
+    }
+    
+    const current = queue.splice(minIdx, 1)[0];
+    
+    if (visited.has(current)) continue;
+    visited.add(current);
+    
+    if (current === nearestEndNode.id) break; // Found destination
+    
+    const neighbors = adjacency.get(current) || [];
+    for (const { nodeId, dist } of neighbors) {
+      if (visited.has(nodeId)) continue;
+      
+      const newDist = distances.get(current)! + dist;
+      if (newDist < distances.get(nodeId)!) {
+        distances.set(nodeId, newDist);
+        previous.set(nodeId, current);
+        if (!queue.includes(nodeId)) {
+          queue.push(nodeId);
+        }
+      }
+    }
+  }
+  
+  // Reconstruct path
+  const path: { x: number; y: number }[] = [];
+  let current: string | null = nearestEndNode.id;
+  
+  // Check if path was found
+  if (distances.get(nearestEndNode.id) === Infinity) {
+    console.log('No path found through road network');
+    return [start, end];
+  }
+  
+  while (current) {
+    const node = nodes.find(n => n.id === current);
+    if (node) {
+      path.unshift({ x: node.x, y: node.y });
+    }
+    current = previous.get(current) || null;
+  }
+  
+  // Add start point (user location) at beginning
+  if (path.length > 0) {
+    const firstRoadPoint = path[0];
+    // Only add start if it's different from first road point
+    if (Math.abs(start.x - firstRoadPoint.x) > 0.01 || Math.abs(start.y - firstRoadPoint.y) > 0.01) {
+      path.unshift(start);
+    }
+  } else {
+    path.unshift(start);
+  }
+  
+  // Add end point (destination) at end
+  if (path.length > 0) {
+    const lastRoadPoint = path[path.length - 1];
+    // Only add end if it's different from last road point
+    if (Math.abs(end.x - lastRoadPoint.x) > 0.01 || Math.abs(end.y - lastRoadPoint.y) > 0.01) {
+      path.push(end);
+    }
+  } else {
+    path.push(end);
+  }
+  
+  console.log(`Path found with ${path.length} points`);
+  return path;
 }
 
-// A* pathfinding algorithm to find path avoiding buildings
+// Legacy function kept for compatibility but now uses road-based pathfinding
 function findPathAStar(
   start: { x: number; y: number },
   end: { x: number; y: number },
-  obstacles: Room[],
+  _obstacles: Room[],
   roads: Pathway[]
 ): { x: number; y: number }[] {
-  console.log('Starting pathfinding from', start, 'to', end);
-  
-  // Always use waypoints-based pathfinding to ensure we follow roads
-  console.log('Using A* pathfinding with road waypoints');
-  
-  // Generate comprehensive waypoints from roads
-  const waypoints: { x: number; y: number }[] = [start];
-  
-  // Add all road corners AND centers as waypoints for better coverage
-  for (const road of roads) {
-    // Skip walls (pathways without labels)
-    if (!road.label) continue;
-    
-    // Add all 4 corners
-    waypoints.push({ x: road.x, y: road.y });
-    waypoints.push({ x: road.x + road.width, y: road.y });
-    waypoints.push({ x: road.x, y: road.y + road.height });
-    waypoints.push({ x: road.x + road.width, y: road.y + road.height });
-    
-    // Add center point for better connectivity
-    waypoints.push({ x: road.x + road.width / 2, y: road.y + road.height / 2 });
-    
-    // Add midpoints of edges for more routing options
-    waypoints.push({ x: road.x + road.width / 2, y: road.y }); // top middle
-    waypoints.push({ x: road.x + road.width / 2, y: road.y + road.height }); // bottom middle
-    waypoints.push({ x: road.x, y: road.y + road.height / 2 }); // left middle
-    waypoints.push({ x: road.x + road.width, y: road.y + road.height / 2 }); // right middle
-  }
-  
-  // Add destination
-  waypoints.push(end);
-  
-  const numWaypoints = waypoints.length;
-  console.log(`Generated ${numWaypoints} waypoints`);
-  
-  // Build adjacency graph of valid connections
-  const graph: Map<number, { idx: number; dist: number }[]> = new Map();
-  
-  for (let i = 0; i < numWaypoints; i++) {
-    const connections: { idx: number; dist: number }[] = [];
-    for (let j = 0; j < numWaypoints; j++) {
-      if (i === j) continue;
-      
-      const p1 = waypoints[i];
-      const p2 = waypoints[j];
-      
-      const dist = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
-      
-      // Only connect nearby waypoints that have clear paths
-      // Reduced distance threshold for more controlled routing
-      if (dist < 0.4 && isPathClear(p1.x, p1.y, p2.x, p2.y, obstacles)) {
-        connections.push({ idx: j, dist });
-      }
-    }
-    graph.set(i, connections);
-    
-    // Log if a waypoint has no connections (isolated)
-    if (connections.length === 0 && i > 0 && i < numWaypoints - 1) {
-      console.log(`Warning: Waypoint ${i} at (${waypoints[i].x.toFixed(2)}, ${waypoints[i].y.toFixed(2)}) has no connections`);
-    }
-  }
-  
-  // A* search from start (index 0) to end (last index)
-  const startIdx = 0;
-  const endIdx = numWaypoints - 1;
-  
-  // Check if start or end are disconnected
-  const startConnections = graph.get(startIdx)?.length || 0;
-  const endConnections = graph.get(endIdx)?.length || 0;
-  
-  console.log(`Start waypoint has ${startConnections} connections`);
-  console.log(`End waypoint has ${endConnections} connections`);
-  
-  if (startConnections === 0 || endConnections === 0) {
-    console.log('Start or end is disconnected, trying to find nearest road waypoints');
-    
-    // Try connecting to nearest waypoints with more lenient distance
-    for (let i = 0; i < numWaypoints; i++) {
-      if (i === startIdx || i === endIdx) continue;
-      
-      const p = waypoints[i];
-      
-      // Try to connect start
-      if (startConnections === 0) {
-        const distToStart = Math.sqrt((p.x - start.x) ** 2 + (p.y - start.y) ** 2);
-        if (distToStart < 0.6 && isPathClear(start.x, start.y, p.x, p.y, obstacles)) {
-          const startConns = graph.get(startIdx) || [];
-          startConns.push({ idx: i, dist: distToStart });
-          graph.set(startIdx, startConns);
-        }
-      }
-      
-      // Try to connect end
-      if (endConnections === 0) {
-        const distToEnd = Math.sqrt((p.x - end.x) ** 2 + (p.y - end.y) ** 2);
-        if (distToEnd < 0.6 && isPathClear(p.x, p.y, end.x, end.y, obstacles)) {
-          const endConns = graph.get(i) || [];
-          endConns.push({ idx: endIdx, dist: distToEnd });
-          graph.set(i, endConns);
-        }
-      }
-    }
-  }
-  
-  console.log(`Searching path from waypoint ${startIdx} to ${endIdx}`);
-  
-  // Priority queue (open set)
-  const openSet: Map<number, PathNode> = new Map();
-  const closedSet: Set<number> = new Set();
-  
-  // Initialize start node
-  openSet.set(startIdx, {
-    x: start.x,
-    y: start.y,
-    g: 0,
-    h: Math.sqrt((end.x - start.x) ** 2 + (end.y - start.y) ** 2),
-    f: Math.sqrt((end.x - start.x) ** 2 + (end.y - start.y) ** 2),
-    parent: null,
-  });
-  
-  let iterations = 0;
-  const maxIterations = 1000;
-  
-  while (openSet.size > 0 && iterations < maxIterations) {
-    iterations++;
-    
-    // Find node in open set with lowest f score
-    let currentIdx = -1;
-    let lowestF = Infinity;
-    
-    openSet.forEach((node, idx) => {
-      if (node.f < lowestF) {
-        lowestF = node.f;
-        currentIdx = idx;
-      }
-    });
-    
-    if (currentIdx === -1) break;
-    
-    const current = openSet.get(currentIdx)!;
-    
-    // Found the destination!
-    if (currentIdx === endIdx) {
-      console.log(`Path found in ${iterations} iterations`);
-      // Reconstruct path
-      const path: { x: number; y: number }[] = [];
-      let node: PathNode | null = current;
-      while (node) {
-        path.unshift({ x: node.x, y: node.y });
-        node = node.parent;
-      }
-      return path;
-    }
-    
-    // Move current from open to closed
-    openSet.delete(currentIdx);
-    closedSet.add(currentIdx);
-    
-    // Check all neighbors
-    const neighbors = graph.get(currentIdx) || [];
-    
-    for (const neighbor of neighbors) {
-      if (closedSet.has(neighbor.idx)) continue;
-      
-      const neighborPoint = waypoints[neighbor.idx];
-      const tentativeG = current.g + neighbor.dist;
-      
-      const existingNode = openSet.get(neighbor.idx);
-      
-      if (!existingNode || tentativeG < existingNode.g) {
-        const h = Math.sqrt((end.x - neighborPoint.x) ** 2 + (end.y - neighborPoint.y) ** 2);
-        
-        const neighborNode: PathNode = {
-          x: neighborPoint.x,
-          y: neighborPoint.y,
-          g: tentativeG,
-          h,
-          f: tentativeG + h,
-          parent: current,
-        };
-        
-        openSet.set(neighbor.idx, neighborNode);
-      }
-    }
-  }
-  
-  console.log(`No path found after ${iterations} iterations, using direct line`);
-  // No path found, return direct line as fallback
-  return [start, end];
+  return findPathOnRoads(start, end, roads);
 }
 
 // Get polygon corners for a rectangular room
@@ -543,21 +626,41 @@ interface InteractiveMapLeafletProps {
   fullScreen?: boolean;
   selectedLocationId?: string;
   onDistanceUpdate?: (distance: number) => void;
+  recenterTrigger?: number;
+  followMode?: boolean;
+  onMapInteraction?: () => void;
+  focusTrigger?: number;
 }
 
 // The actual map component - must be loaded client-side only
 function MapComponent({ 
   fullScreen, 
   selectedLocationId, 
-  onDistanceUpdate 
+  onDistanceUpdate,
+  recenterTrigger,
+  followMode,
+  onMapInteraction,
+  focusTrigger
 }: InteractiveMapLeafletProps) {
   const [userPosition, setUserPosition] = useState<{ lat: number; lng: number } | null>(null);
   const [userHeading, setUserHeading] = useState<number>(0);
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
   const [isTracking, setIsTracking] = useState(false);
-  const [showLabels, setShowLabels] = useState(true);
   const [gpsError, setGpsError] = useState<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
+  const [isOutsideCampus, setIsOutsideCampus] = useState(false);
+  const [tilesLoaded, setTilesLoaded] = useState(false);
+
+  // Check if user is outside campus bounds
+  const checkIfOutsideCampus = (lat: number, lng: number): boolean => {
+    const margin = 0.0005; // Small margin for accuracy
+    const isOutside = 
+      lat < GPS_CORNERS.bottomLeft.lat - margin ||
+      lat > GPS_CORNERS.topLeft.lat + margin ||
+      lng < GPS_CORNERS.topLeft.lng - margin ||
+      lng > GPS_CORNERS.bottomRight.lng + margin;
+    return isOutside;
+  };
   
   const mapRef = useRef<L.Map | null>(null);
   const watchIdRef = useRef<number | null>(null);
@@ -578,20 +681,39 @@ function MapComponent({
     const container = document.getElementById('leaflet-map');
     if (!container) return;
     
-    // Create map
+    // Define campus bounds for restriction
+    const campusBounds = L.latLngBounds(
+      [GPS_CORNERS.bottomLeft.lat - 0.001, GPS_CORNERS.topLeft.lng - 0.001], // Southwest
+      [GPS_CORNERS.topRight.lat + 0.001, GPS_CORNERS.bottomRight.lng + 0.001]  // Northeast
+    );
+    
+    // Create map - always centered on campus
     const map = L.map(container, {
       center: [CENTER_LAT, CENTER_LNG],
-      zoom: 17,
+      zoom: 18, // Start more zoomed in
       maxZoom: 22,
-      minZoom: 14,
+      minZoom: 16, // Don't allow zooming out too much
+      maxBounds: campusBounds, // Restrict panning to campus area
+      maxBoundsViscosity: 1.0, // Solid boundary - can't pan outside
     });
     
-    // Add OpenStreetMap tiles
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    // Use a simple grey tile layer instead of OpenStreetMap to hide external buildings
+    // This creates a clean background without showing surrounding streets/buildings
+    const tileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', {
       maxZoom: 22,
       maxNativeZoom: 19,
-      attribution: '© OpenStreetMap'
+      attribution: ''
     }).addTo(map);
+    
+    // Wait for tiles to load before showing the map
+    tileLayer.on('load', () => {
+      setTilesLoaded(true);
+    });
+    
+    // Fallback: show map after 2 seconds even if tiles haven't fully loaded
+    const fallbackTimer = setTimeout(() => {
+      setTilesLoaded(true);
+    }, 2000);
     
     // Create mask - a huge polygon with a hole for the building
     const worldBounds: L.LatLngExpression[] = [
@@ -608,11 +730,11 @@ function MapComponent({
       [GPS_CORNERS.bottomLeft.lat, GPS_CORNERS.bottomLeft.lng],
     ];
     
-    // Add mask polygon (dark area outside building)
+    // Add mask polygon (dark area outside building) - increased opacity to fully hide external areas
     L.polygon([worldBounds, buildingHole], {
       color: 'transparent',
-      fillColor: '#0f172a',
-      fillOpacity: 0.85,
+      fillColor: '#1e293b',
+      fillOpacity: 0.95, // Almost fully opaque to hide external buildings
       interactive: false,
     }).addTo(map);
     
@@ -710,25 +832,74 @@ function MapComponent({
         interactive: false,
       }).addTo(map);
       
-      // Add popup on room click
-      roomPoly.bindPopup(`
-        <div style="text-align: center; min-width: 140px;">
+      // Create popup content for the room
+      const info = buildingDescriptions[room.id];
+      const roomDisplayName = room.name.replace(/\\n/g, ' ');
+      const categoryColor = room.category === 'Emergency' 
+        ? '#ef4444' 
+        : room.category === 'Department' 
+        ? '#3b82f6' 
+        : room.category === 'Service' 
+        ? '#22c55e' 
+        : '#f97316';
+      
+      const popupContent = `
+        <div style="min-width: 200px; max-width: 280px; padding: 4px;">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+            <div style="
+              width: 10px; 
+              height: 10px; 
+              border-radius: 50%; 
+              background: ${categoryColor};
+              flex-shrink: 0;
+            "></div>
+            <div style="font-size: 15px; font-weight: 700; color: #1f2937; line-height: 1.2;">
+              ${roomDisplayName}
+            </div>
+          </div>
           <div style="
-            font-size: 14px;
-            font-weight: 600;
-            color: ${COLORS.text};
-            margin-bottom: 4px;
-          ">${room.name.replace(/\n/g, ' ')}</div>
-          <div style="
-            font-size: 11px;
-            color: #64748b;
-            padding: 4px 10px;
-            background: ${COLORS.background};
-            border-radius: 4px;
+            font-size: 11px; 
+            color: white; 
+            background: ${categoryColor}; 
+            padding: 3px 8px; 
+            border-radius: 12px; 
             display: inline-block;
+            margin-bottom: 10px;
+            font-weight: 500;
           ">${room.category}</div>
+          <p style="font-size: 13px; color: #4b5563; line-height: 1.5; margin: 0 0 8px 0;">
+            ${info?.description || 'No description available.'}
+          </p>
+          ${info?.email ? `
+            <div style="
+              display: flex; 
+              align-items: center; 
+              gap: 6px; 
+              padding: 8px 10px; 
+              background: #f3f4f6; 
+              border-radius: 8px;
+              margin-top: 8px;
+            ">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2">
+                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                <polyline points="22,6 12,13 2,6"/>
+              </svg>
+              <a href="mailto:${info.email}" style="font-size: 12px; color: #2563eb; text-decoration: none;">
+                ${info.email}
+              </a>
+            </div>
+          ` : ''}
         </div>
-      `);
+      `;
+      
+      // Bind popup to room polygon
+      roomPoly.bindPopup(popupContent, {
+        className: 'custom-popup',
+        maxWidth: 300,
+        closeButton: true,
+        autoPan: true,
+        autoPanPadding: [50, 50],
+      });
     });
     
     // Add gate labels
@@ -780,13 +951,64 @@ function MapComponent({
       interactive: false,
     }).addTo(map);
     
+    // Create clickable parking area polygon
+    const parkingArea: L.LatLngExpression[] = [
+      [relToGps(0.72, 0.40).lat, relToGps(0.72, 0.40).lng],
+      [relToGps(0.97, 0.40).lat, relToGps(0.97, 0.40).lng],
+      [relToGps(0.97, 0.68).lat, relToGps(0.97, 0.68).lng],
+      [relToGps(0.72, 0.68).lat, relToGps(0.72, 0.68).lng],
+    ];
+    
+    const parkingPoly = L.polygon(parkingArea, {
+      color: 'transparent',
+      fillColor: 'transparent',
+      fillOpacity: 0,
+      interactive: true,
+    }).addTo(map);
+    
+    // Parking popup content
+    const parkingInfo = buildingDescriptions['parking'];
+    const parkingPopupContent = `
+      <div style="min-width: 200px; max-width: 280px; padding: 4px;">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+          <div style="font-size: 20px;">🅿️</div>
+          <div style="font-size: 15px; font-weight: 700; color: #1f2937; line-height: 1.2;">
+            Parking Area
+          </div>
+        </div>
+        <div style="
+          font-size: 11px; 
+          color: white; 
+          background: #6b7280; 
+          padding: 3px 8px; 
+          border-radius: 12px; 
+          display: inline-block;
+          margin-bottom: 10px;
+          font-weight: 500;
+        ">Facility</div>
+        <p style="font-size: 13px; color: #4b5563; line-height: 1.5; margin: 0;">
+          ${parkingInfo?.description || 'Visitor and staff parking area.'}
+        </p>
+      </div>
+    `;
+    
+    parkingPoly.bindPopup(parkingPopupContent, {
+      className: 'custom-popup',
+      maxWidth: 300,
+      closeButton: true,
+      autoPan: true,
+      autoPanPadding: [50, 50],
+    });
+    
     mapRef.current = map;
     setMapReady(true);
     
     return () => {
+      clearTimeout(fallbackTimer);
       map.remove();
       mapRef.current = null;
       setMapReady(false);
+      setTilesLoaded(false);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [L]);
@@ -800,11 +1022,26 @@ function MapComponent({
       }
     }
   }, [selectedLocationId]);
+
+  // Auto-focus on selected building when focusTrigger changes
+  useEffect(() => {
+    if (!mapRef.current || !selectedRoom || !focusTrigger) return;
+    
+    const map = mapRef.current;
+    const gps = relToGps(selectedRoom.x, selectedRoom.y);
+    
+    // Pan to the selected building with animation
+    map.flyTo([gps.lat, gps.lng], 19, {
+      duration: 0.8,
+      easeLinearity: 0.25
+    });
+  }, [focusTrigger, selectedRoom]);
   
   // User position marker
   const userMarkerRef = useRef<L.CircleMarker | null>(null);
   const userAccuracyRef = useRef<L.Circle | null>(null);
   const headingMarkerRef = useRef<L.Polyline | null>(null);
+  const userLabelRef = useRef<L.Marker | null>(null);
   
   useEffect(() => {
     if (!L || !mapRef.current || !userPosition) return;
@@ -821,23 +1058,48 @@ function MapComponent({
     if (headingMarkerRef.current) {
       map.removeLayer(headingMarkerRef.current);
     }
+    if (userLabelRef.current) {
+      map.removeLayer(userLabelRef.current);
+    }
     
-    // Add accuracy circle
+    // Add accuracy circle with green glow
     userAccuracyRef.current = L.circle([userPosition.lat, userPosition.lng], {
-      radius: 10,
-      color: '#3b82f6',
-      fillColor: '#3b82f6',
-      fillOpacity: 0.1,
-      weight: 1,
+      radius: 15,
+      color: '#22c55e',
+      fillColor: '#22c55e',
+      fillOpacity: 0.15,
+      weight: 2,
     }).addTo(map);
     
-    // Add user marker
+    // Add user marker (green dot for live location)
     userMarkerRef.current = L.circleMarker([userPosition.lat, userPosition.lng], {
-      radius: 10,
+      radius: 12,
       color: '#ffffff',
-      fillColor: '#3b82f6',
+      fillColor: '#22c55e',
       fillOpacity: 1,
       weight: 3,
+    }).addTo(map);
+    
+    // Add "You" label above the user marker
+    const youLabelIcon = L.divIcon({
+      className: 'you-label',
+      html: `<div style="
+        background: white;
+        padding: 4px 10px;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        font-size: 13px;
+        font-weight: 600;
+        color: #374151;
+        white-space: nowrap;
+      ">You</div>`,
+      iconSize: [40, 28],
+      iconAnchor: [20, 45], // Position above the marker
+    });
+    
+    userLabelRef.current = L.marker([userPosition.lat, userPosition.lng], {
+      icon: youLabelIcon,
+      interactive: false,
     }).addTo(map);
     
     // Add heading arrow
@@ -848,7 +1110,7 @@ function MapComponent({
     
     headingMarkerRef.current = L.polyline(
       [[userPosition.lat, userPosition.lng], [endLat, endLng]],
-      { color: '#3b82f6', weight: 4 }
+      { color: '#22c55e', weight: 4 }
     ).addTo(map);
     
   }, [L, userPosition, userHeading, mapReady]);
@@ -912,13 +1174,28 @@ function MapComponent({
           return [gpsPoint.lat, gpsPoint.lng];
         });
         
+        // Route line with shadow/outline effect
+        // First add a darker outline/shadow
+        L.polyline(
+          pathGps,
+          { 
+            color: '#166534', // Dark green shadow
+            weight: 8, 
+            opacity: 0.4,
+            lineCap: 'round',
+            lineJoin: 'round',
+          }
+        ).addTo(map);
+        
+        // Then add the main green route line on top
         routeLineRef.current = L.polyline(
           pathGps,
           { 
-            color: '#8b5cf6', 
-            weight: 4, 
-            dashArray: '10, 10',
-            opacity: 0.8 
+            color: '#22c55e', // Green route line
+            weight: 5, 
+            opacity: 1,
+            lineCap: 'round',
+            lineJoin: 'round',
           }
         ).addTo(map);
         
@@ -937,57 +1214,115 @@ function MapComponent({
     }
   }, [L, selectedRoom, userPosition, mapReady, onDistanceUpdate]);
   
-  // GPS tracking
-  const startTracking = () => {
+  // Recenter map when trigger changes
+  useEffect(() => {
+    if (!mapRef.current || !userPosition || recenterTrigger === undefined || recenterTrigger === 0) return;
+    
+    mapRef.current.panTo([userPosition.lat, userPosition.lng], { animate: true });
+  }, [recenterTrigger, userPosition]);
+  
+  // Follow mode - keep user centered
+  useEffect(() => {
+    if (!mapRef.current || !userPosition || !followMode) return;
+    
+    mapRef.current.panTo([userPosition.lat, userPosition.lng], { animate: true });
+  }, [userPosition, followMode]);
+  
+  // Add map interaction listener to disable follow mode
+  useEffect(() => {
+    if (!mapRef.current || !onMapInteraction) return;
+    
+    const map = mapRef.current;
+    
+    const handleInteraction = () => {
+      onMapInteraction();
+    };
+    
+    // Listen for user interactions that should disable follow mode
+    map.on('dragstart', handleInteraction);
+    map.on('zoomstart', handleInteraction);
+    
+    return () => {
+      map.off('dragstart', handleInteraction);
+      map.off('zoomstart', handleInteraction);
+    };
+  }, [mapReady, onMapInteraction]);
+  
+  // GPS tracking - auto start when map is ready
+  useEffect(() => {
+    if (!mapReady || isTracking) return;
+    
     if (!navigator.geolocation) {
-      setGpsError('Geolocation not supported');
+      // Don't show error, just silently skip GPS
+      console.log('Geolocation not supported');
       return;
     }
     
+    // Auto-start GPS tracking
     setIsTracking(true);
     setGpsError(null);
     
-    const watchId = navigator.geolocation.watchPosition(
-      (position) => {
-        const { latitude, longitude, heading } = position.coords;
-        setUserPosition({ lat: latitude, lng: longitude });
+    // First try to get a single position to test permissions
+    navigator.geolocation.getCurrentPosition(
+      () => {
+        // Permission granted, now start watching
+        const watchId = navigator.geolocation.watchPosition(
+          (position) => {
+            const { latitude, longitude, heading } = position.coords;
+            setUserPosition({ lat: latitude, lng: longitude });
+            setGpsError(null); // Clear any previous error
+            
+            // Check if user is outside campus
+            setIsOutsideCampus(checkIfOutsideCampus(latitude, longitude));
+            
+            if (heading !== null && !isNaN(heading)) {
+              setUserHeading(heading);
+            }
+            
+            // DON'T auto-pan to user position - keep map centered on campus
+            // User can tap "Re-center" or the recenter button to follow their location
+          },
+          (error) => {
+            console.log('GPS watch error:', error.code);
+            // Only show error for permission denied, not for temporary issues
+            if (error.code === error.PERMISSION_DENIED) {
+              setGpsError('GPS access denied');
+              setIsTracking(false);
+            }
+            // For timeout or position unavailable, keep trying silently
+          },
+          {
+            enableHighAccuracy: false, // Start with low accuracy for faster initial fix
+            timeout: 15000,
+            maximumAge: 30000, // Accept positions up to 30 seconds old
+          }
+        );
         
-        if (heading !== null && !isNaN(heading)) {
-          setUserHeading(heading);
-        }
-        
-        // Center map on first position
-        if (mapRef.current && !userPosition) {
-          mapRef.current.panTo([latitude, longitude]);
-        }
+        watchIdRef.current = watchId;
       },
       (error) => {
-        setGpsError(error.message);
+        console.log('Initial GPS error:', error.code);
+        // Permission denied or not available
+        if (error.code === error.PERMISSION_DENIED) {
+          setGpsError('GPS access denied');
+        }
         setIsTracking(false);
       },
       {
-        enableHighAccuracy: true,
+        enableHighAccuracy: false,
         timeout: 5000,
-        maximumAge: 0,
+        maximumAge: 60000,
       }
     );
     
-    watchIdRef.current = watchId;
-  };
-  
-  const stopTracking = () => {
-    if (watchIdRef.current !== null) {
-      navigator.geolocation.clearWatch(watchIdRef.current);
-      watchIdRef.current = null;
-    }
-    setIsTracking(false);
-  };
-  
-  const centerOnUser = () => {
-    if (mapRef.current && userPosition) {
-      mapRef.current.panTo([userPosition.lat, userPosition.lng]);
-    }
-  };
+    return () => {
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapReady]);
   
   const centerOnBuilding = () => {
     if (mapRef.current) {
@@ -1011,13 +1346,64 @@ function MapComponent({
           border: none !important;
         }
         
+        /* Custom popup styling with arrow */
         .leaflet-popup-content-wrapper {
-          border-radius: 12px;
-          box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+          border-radius: 16px;
+          box-shadow: 0 8px 30px rgba(0,0,0,0.2);
+          padding: 0;
+          overflow: hidden;
+          background: white;
         }
         
         .leaflet-popup-content {
-          margin: 12px 16px;
+          margin: 12px 14px;
+          line-height: 1.4;
+        }
+        
+        .leaflet-popup-tip-container {
+          width: 30px;
+          height: 15px;
+        }
+        
+        .leaflet-popup-tip {
+          background: white;
+          box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+          width: 15px;
+          height: 15px;
+        }
+        
+        .leaflet-popup-close-button {
+          top: 8px !important;
+          right: 8px !important;
+          width: 24px !important;
+          height: 24px !important;
+          font-size: 18px !important;
+          line-height: 24px !important;
+          color: #9ca3af !important;
+          background: #f3f4f6 !important;
+          border-radius: 50% !important;
+          text-align: center;
+          transition: all 0.15s ease;
+        }
+        
+        .leaflet-popup-close-button:hover {
+          color: #4b5563 !important;
+          background: #e5e7eb !important;
+        }
+        
+        .custom-popup .leaflet-popup-content-wrapper {
+          animation: popupFadeIn 0.2s ease-out;
+        }
+        
+        @keyframes popupFadeIn {
+          from {
+            opacity: 0;
+            transform: translateY(10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
         }
         
         .leaflet-container {
@@ -1029,82 +1415,78 @@ function MapComponent({
         }
       `}</style>
       
+      {/* Loading Overlay - Shows until tiles are loaded */}
+      {!tilesLoaded && (
+        <div className="absolute inset-0 z-100 flex items-center justify-center rounded-xl" style={{ background: '#1e293b' }}>
+          <Loader text="Loading map..." />
+        </div>
+      )}
+      
       {/* Map Container */}
       <div id="leaflet-map" className="w-full h-full rounded-xl overflow-hidden" />
-      
-      {/* Controls Overlay - Mobile Responsive */}
-      <div className="absolute top-4 right-2 sm:right-4 z-50 flex flex-col gap-1.5 sm:gap-2">
-        {/* Zoom Controls */}
-        <button
-          onClick={() => mapRef.current?.zoomIn()}
-          className="p-2 sm:p-3 bg-white rounded-full shadow-lg hover:bg-gray-50 active:scale-95 transition-transform"
-        >
-          <ZoomIn className="w-4 h-4 sm:w-5 sm:h-5 text-gray-700" />
-        </button>
-        <button
-          onClick={() => mapRef.current?.zoomOut()}
-          className="p-2 sm:p-3 bg-white rounded-full shadow-lg hover:bg-gray-50 active:scale-95 transition-transform"
-        >
-          <ZoomOut className="w-4 h-4 sm:w-5 sm:h-5 text-gray-700" />
-        </button>
-        
-        {/* Layer Toggle */}
-        <button
-          onClick={() => setShowLabels(!showLabels)}
-          className={`p-2 sm:p-3 rounded-full shadow-lg active:scale-95 transition-transform ${showLabels ? 'bg-blue-500 text-white' : 'bg-white text-gray-700'}`}
-        >
-          <Layers className="w-4 h-4 sm:w-5 sm:h-5" />
-        </button>
-      </div>
-      
-      {/* Bottom Left Controls - Mobile Responsive */}
-      <div className="absolute bottom-20 sm:bottom-24 left-2 sm:left-4 z-50 flex flex-col gap-1.5 sm:gap-2">
-        {/* GPS Toggle */}
-        <button
-          onClick={isTracking ? stopTracking : startTracking}
-          className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-full shadow-lg font-medium text-xs sm:text-sm flex items-center gap-1.5 sm:gap-2 active:scale-95 transition-transform ${
-            isTracking ? 'bg-green-500 text-white' : 'bg-white text-gray-700'
-          }`}
-        >
-          <Navigation className={`w-3 h-3 sm:w-4 sm:h-4 ${isTracking ? 'animate-pulse' : ''}`} />
-          <span className="hidden xs:inline">{isTracking ? 'GPS Active' : 'Start GPS'}</span>
-          <span className="xs:hidden">{isTracking ? 'GPS' : 'GPS'}</span>
-        </button>
-        
-        {/* Center on User */}
-        {userPosition && (
-          <button
-            onClick={centerOnUser}
-            className="px-3 py-1.5 sm:px-4 sm:py-2 rounded-full shadow-lg font-medium text-xs sm:text-sm flex items-center gap-1.5 sm:gap-2 bg-blue-500 text-white active:scale-95 transition-transform"
+
+      {/* Outside Campus Indicator */}
+      {isOutsideCampus && userPosition && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50">
+          <div 
+            className="px-4 py-2.5 rounded-full shadow-lg font-medium text-sm flex items-center gap-2 animate-pulse"
+            style={{
+              background: 'rgba(245, 158, 11, 0.95)',
+              backdropFilter: 'blur(10px)',
+              WebkitBackdropFilter: 'blur(10px)',
+              color: 'white',
+            }}
           >
-            <Crosshair className="w-3 h-3 sm:w-4 sm:h-4" />
-            <span className="hidden xs:inline">My Location</span>
-            <span className="xs:hidden">Me</span>
-          </button>
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <span>You are outside the campus</span>
+          </div>
+        </div>
+      )}
+      
+      {/* Bottom Left Controls - Simplified */}
+      <div className="absolute bottom-20 sm:bottom-24 left-2 sm:left-4 z-50 flex flex-col gap-1.5 sm:gap-2">
+        {/* GPS Status Indicator */}
+        {isTracking && userPosition && !isOutsideCampus && (
+          <div 
+            className="px-3 py-1.5 sm:px-4 sm:py-2 rounded-full shadow-lg font-medium text-xs sm:text-sm flex items-center gap-1.5 sm:gap-2"
+            style={{
+              background: 'rgba(255, 255, 255, 0.9)',
+              backdropFilter: 'blur(10px)',
+              WebkitBackdropFilter: 'blur(10px)',
+            }}
+          >
+            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+            <span className="text-gray-700">Live</span>
+          </div>
         )}
         
         {/* Center on Building */}
         <button
           onClick={centerOnBuilding}
-          className="px-3 py-1.5 sm:px-4 sm:py-2 rounded-full shadow-lg font-medium text-xs sm:text-sm flex items-center gap-1.5 sm:gap-2 bg-white text-gray-700 active:scale-95 transition-transform"
+          className="px-3 py-1.5 sm:px-4 sm:py-2 rounded-full shadow-lg font-medium text-xs sm:text-sm flex items-center gap-1.5 sm:gap-2 active:scale-90 hover:shadow-xl transition-all duration-150 cursor-pointer group"
+          style={{
+            background: 'rgba(255, 255, 255, 0.9)',
+            backdropFilter: 'blur(10px)',
+            WebkitBackdropFilter: 'blur(10px)',
+          }}
         >
-          <span className="text-sm sm:text-base">🏥</span>
-          <span className="hidden xs:inline">Building</span>
+          <span className="text-sm sm:text-base group-hover:scale-110 transition-transform">🏥</span>
+          <span className="hidden xs:inline text-gray-700 group-hover:text-gray-900">Building</span>
         </button>
         
-        {/* GPS Coordinates Display - Hidden on very small screens */}
-        {userPosition && (
-          <div className="hidden sm:block bg-black/80 text-white px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg text-[10px] sm:text-xs">
-            <div className="font-mono">
-              <div>Lat: {userPosition.lat.toFixed(6)}</div>
-              <div>Lng: {userPosition.lng.toFixed(6)}</div>
-            </div>
-          </div>
-        )}
-        
-        {/* Error Display */}
+        {/* GPS Error Display - glassmorphism style */}
         {gpsError && (
-          <div className="bg-red-500 text-white px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg text-[10px] sm:text-xs max-w-[200px] sm:max-w-none">
+          <div 
+            className="px-3 py-2 rounded-xl text-xs sm:text-sm max-w-[220px] sm:max-w-none font-medium"
+            style={{
+              background: 'rgba(239, 68, 68, 0.9)',
+              backdropFilter: 'blur(10px)',
+              WebkitBackdropFilter: 'blur(10px)',
+              color: 'white',
+            }}
+          >
             {gpsError}
           </div>
         )}
@@ -1128,20 +1510,6 @@ function MapComponent({
               </option>
             ))}
           </select>
-        </div>
-      )}
-      
-      {/* Selected Room Info */}
-      {selectedRoom && (
-        <div className="absolute top-4 left-4 z-50 bg-white rounded-lg shadow-lg p-3 max-w-52">
-          <div className="flex items-center gap-2">
-            <div 
-              className="w-3 h-3 rounded-full"
-              style={{ backgroundColor: selectedRoom.isDark ? COLORS.roomDark : COLORS.roomLight }}
-            />
-            <span className="font-medium text-sm">{selectedRoom.name.replace(/\n/g, ' ')}</span>
-          </div>
-          <span className="text-xs text-gray-500">{selectedRoom.category}</span>
         </div>
       )}
     </div>
