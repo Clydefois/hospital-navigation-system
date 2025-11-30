@@ -1,26 +1,47 @@
 'use client';
 
-import InteractiveMapGPS from '@/components/InteractiveMapGPS';
+import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, ChevronUp, MapPin, ChevronDown, Navigation } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
 
+// Dynamic import to avoid SSR issues with Leaflet
+const InteractiveMapLeaflet = dynamic(
+  () => import('@/components/InteractiveMapLeaflet'),
+  { 
+    ssr: false,
+    loading: () => (
+      <div className="w-full h-full flex items-center justify-center bg-gray-100">
+        <div className="text-gray-500">Loading map...</div>
+      </div>
+    )
+  }
+);
+
+// Locations matching the rooms in InteractiveMapLeaflet.tsx
+// Positions reference roads and gates for navigation
 const locations = [
-  { id: '1', name: 'Emergency Room', category: 'Emergency', floor: 'Ground Floor', section: 'Section A' },
-  { id: '2', name: 'Surgery Department', category: 'Department', floor: '2nd Floor', section: 'West Wing' },
-  { id: '3', name: 'Cardio-Pulmonary', category: 'Department', floor: '3rd Floor', section: 'East Wing' },
-  { id: '4', name: 'Neurology Department', category: 'Department', floor: '2nd Floor', section: 'North Wing' },
-  { id: '5', name: 'Pediatric Department', category: 'Department', floor: '2nd Floor', section: 'South Wing' },
-  { id: '6', name: 'Cafeteria', category: 'Amenity', floor: '2nd Floor', section: 'Central Area' },
-  { id: '7', name: 'Doctors Clinic', category: 'Service', floor: '1st Floor', section: 'East Wing' },
-  { id: '8', name: 'Orthopedic Department', category: 'Department', floor: '3rd Floor', section: 'West Wing' },
-  { id: '9', name: 'Dermatology Department', category: 'Department', floor: '1st Floor', section: 'North Wing' },
-  { id: '10', name: 'Nephrology Department', category: 'Department', floor: '2nd Floor', section: 'West Wing' },
-  { id: '11', name: 'Ophthalmology Department', category: 'Department', floor: '2nd Floor', section: 'East Wing' },
-  { id: '12', name: 'Radiology Department', category: 'Service', floor: '1st Floor', section: 'South Wing' },
-  { id: '13', name: 'Diagnostic/Laboratory', category: 'Service', floor: 'Ground Floor', section: 'North Wing' },
-  { id: '14', name: 'Restrooms', category: 'Amenity', floor: 'All Floors', section: 'Near Elevators' },
+  // Top Row - near Gate 3, Gate 4, Gate 5
+  { id: '2', name: 'Nephrology Department', category: 'Department', floor: 'Ground Floor', section: 'Near Road G & Road I' },
+  { id: '5', name: 'Ophthalmology Department', category: 'Department', floor: 'Ground Floor', section: 'Below Nephrology, Road G area' },
+  { id: '17', name: 'Dermatology Department', category: 'Department', floor: 'Ground Floor', section: 'Near Gate 5, Road I & J area' },
+  { id: '9', name: 'Surgery Department', category: 'Department', floor: 'Ground Floor', section: 'Between Gate 3 & Gate 4, Road B area' },
+  { id: '13', name: 'Church', category: 'Amenity', floor: 'Ground Floor', section: 'Left side, above Road A' },
+  
+  // Middle Section - near Road A, Road B, Road C
+  { id: '6', name: 'Neurology Department', category: 'Department', floor: 'Ground Floor', section: 'Road C area, near Road D' },
+  { id: '10', name: 'Pediatric Department', category: 'Department', floor: 'Ground Floor', section: 'Center, between Road B & Road C' },
+  { id: '14', name: 'Emergency Room', category: 'Emergency', floor: 'Ground Floor', section: 'Near Gate 1 & Gate 2, Road F area' },
+  
+  // Bottom Row - near Road E, Road F, Gate 6
+  { id: '7', name: 'Comfort Room', category: 'Amenity', floor: 'Ground Floor', section: 'Road C & Road E junction' },
+  { id: '8', name: 'Cafeteria', category: 'Amenity', floor: 'Ground Floor', section: 'Below Comfort Room, Road E area' },
+  { id: '11', name: 'Orthopedic Department', category: 'Department', floor: 'Ground Floor', section: 'Road C & Road F area' },
+  { id: '12', name: 'Radiology Department', category: 'Department', floor: 'Ground Floor', section: 'Bottom, near Road F' },
+  { id: '18', name: "Doctors' Clinic", category: 'Service', floor: 'Ground Floor', section: 'Bottom left, near Gate 1' },
+  { id: '15', name: 'Cardio-Pulmonary Department', category: 'Department', floor: 'Ground Floor', section: 'Road E & Road K area' },
+  { id: '16', name: 'Diagnostic/Laboratory', category: 'Service', floor: 'Ground Floor', section: 'Near Gate 6, Road K area' },
 ];
 
 export default function NavigationPage() {
@@ -96,77 +117,98 @@ export default function NavigationPage() {
 
   if (!locationGranted) {
     return (
-      <div className="fixed inset-0 bg-linear-to-br from-blue-50 via-purple-50 to-blue-100 flex items-center justify-center p-4">
+      <div className="fixed inset-0 bg-white flex flex-col items-center justify-center p-6">
+        {/* Back button */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="absolute top-4 left-4"
+        >
+          <Link href="/">
+            <button className="flex items-center gap-2 p-2 rounded-full hover:bg-gray-100 transition-all">
+              <ArrowLeft className="w-5 h-5 text-gray-600" />
+            </button>
+          </Link>
+        </motion.div>
+
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="w-full max-w-md"
+          className="w-full max-w-sm flex flex-col items-center"
         >
-          {/* Location Icon */}
-          <div className="flex justify-center mb-8">
+          {/* Location Icon with Concentric Rings */}
+          <div className="relative mb-12">
+            {/* Outer rings */}
+            <motion.div
+              animate={{ scale: [1, 1.1, 1], opacity: [0.15, 0.05, 0.15] }}
+              transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+              className="absolute inset-0 w-64 h-64 -translate-x-1/2 -translate-y-1/2 left-1/2 top-1/2"
+            >
+              <div className="w-full h-full rounded-full border-2 border-[#3b7ea1]" />
+            </motion.div>
+            <motion.div
+              animate={{ scale: [1, 1.15, 1], opacity: [0.2, 0.08, 0.2] }}
+              transition={{ duration: 3, repeat: Infinity, ease: "easeInOut", delay: 0.3 }}
+              className="absolute inset-0 w-52 h-52 -translate-x-1/2 -translate-y-1/2 left-1/2 top-1/2"
+            >
+              <div className="w-full h-full rounded-full border-2 border-[#3b7ea1]" />
+            </motion.div>
+            <motion.div
+              animate={{ scale: [1, 1.1, 1], opacity: [0.25, 0.1, 0.25] }}
+              transition={{ duration: 3, repeat: Infinity, ease: "easeInOut", delay: 0.6 }}
+              className="absolute inset-0 w-40 h-40 -translate-x-1/2 -translate-y-1/2 left-1/2 top-1/2"
+            >
+              <div className="w-full h-full rounded-full border-2 border-[#3b7ea1]" />
+            </motion.div>
+            
+            {/* Small dots on the rings */}
+            <div className="absolute w-2 h-2 bg-gray-300 rounded-full" style={{ top: '10%', left: '85%' }} />
+            <div className="absolute w-2 h-2 bg-gray-300 rounded-full" style={{ top: '75%', left: '5%' }} />
+            <div className="absolute w-2 h-2 bg-gray-300 rounded-full" style={{ top: '90%', left: '70%' }} />
+            <div className="absolute w-1.5 h-1.5 bg-gray-400 rounded-full" style={{ top: '25%', left: '10%' }} />
+            
+            {/* Main circle with location icon */}
             <motion.div
               animate={{ 
-                rotate: [0, 10, -10, 10, 0],
-                scale: [1, 1.05, 1, 1.05, 1]
+                y: [0, -5, 0],
               }}
-              transition={{ duration: 2, repeat: Infinity, repeatDelay: 1 }}
-              className="relative"
+              transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+              className="relative z-10 w-28 h-28 bg-[#3b7ea1] rounded-full flex items-center justify-center shadow-xl"
             >
-              <div className="w-32 h-32 bg-linear-to-br from-orange-400 to-yellow-500 rounded-full flex items-center justify-center shadow-2xl">
-                <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center">
-                  <MapPin className="w-12 h-12 text-orange-500" fill="currentColor" />
-                </div>
-              </div>
-              {/* Pulse rings */}
-              <motion.div
-                animate={{ scale: [1, 1.5, 1], opacity: [0.5, 0, 0.5] }}
-                transition={{ duration: 2, repeat: Infinity }}
-                className="absolute inset-0 border-4 border-orange-400 rounded-full"
-              />
-              <motion.div
-                animate={{ scale: [1, 1.8, 1], opacity: [0.3, 0, 0.3] }}
-                transition={{ duration: 2, repeat: Infinity, delay: 0.5 }}
-                className="absolute inset-0 border-4 border-orange-300 rounded-full"
-              />
+              <MapPin className="w-12 h-12 text-white" fill="white" stroke="white" />
             </motion.div>
           </div>
 
-          {/* Content Card */}
-          <div className="bg-white rounded-3xl shadow-2xl p-6 sm:p-8 text-center">
-            <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2 sm:mb-3">Location Services</h2>
-            <p className="text-gray-600 text-xs sm:text-sm mb-4 sm:mb-6 leading-relaxed px-2">
-              To provide you with accurate navigation and real-time directions within the hospital, 
-              we need access to your device&apos;s location.
+          {/* Text Content */}
+          <div className="text-center mb-8">
+            <h1 className="text-2xl font-bold text-gray-900 mb-3">Need Your Location</h1>
+            <p className="text-gray-500 text-sm leading-relaxed">
+              Please give us access to your<br />GPS Location
             </p>
-            
-            {locationError && (
-              <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                <p className="text-xs text-yellow-800 leading-relaxed">{locationError}</p>
-              </div>
-            )}
-            
-            <div className="space-y-3">
-              <button
-                onClick={requestLocation}
-                className="w-full bg-linear-to-r from-orange-500 to-yellow-500 hover:from-orange-600 hover:to-yellow-600 text-white font-bold py-3 sm:py-4 px-4 sm:px-6 rounded-full transition-all transform hover:scale-105 shadow-lg text-sm sm:text-base"
-              >
-                USE MY LOCATION
-              </button>
-              
-              <button
-                onClick={skipLocation}
-                className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-3 sm:py-4 px-4 sm:px-6 rounded-full transition-all text-sm sm:text-base"
-              >
-                SKIP - SELECT MANUALLY
-              </button>
-              
-              <p className="text-xs text-gray-500 mt-2">
-                Note: GPS navigation requires HTTPS. For full features, visit{' '}
-                <a href="https://zcmedicalcenter.netlify.app" className="text-blue-600 underline">
-                  zcmedicalcenter.netlify.app
-                </a>
-              </p>
+          </div>
+          
+          {/* Error Message */}
+          {locationError && (
+            <div className="mb-6 p-3 bg-amber-50 border border-amber-200 rounded-xl w-full">
+              <p className="text-xs text-amber-800 leading-relaxed text-center">{locationError}</p>
             </div>
+          )}
+          
+          {/* Buttons */}
+          <div className="w-full space-y-4">
+            <button
+              onClick={requestLocation}
+              className="w-full bg-[#c94a4a] hover:bg-[#b43d3d] text-white font-semibold py-4 px-6 rounded-full transition-all transform hover:scale-[1.02] shadow-lg text-sm tracking-wide"
+            >
+              Turn on Location Services
+            </button>
+            
+            <button
+              onClick={skipLocation}
+              className="w-full text-gray-500 hover:text-gray-700 font-medium py-3 px-6 transition-all text-sm"
+            >
+              No, other Time
+            </button>
           </div>
         </motion.div>
       </div>
@@ -292,7 +334,7 @@ export default function NavigationPage() {
 
       {/* Full-screen Map */}
       <div className="absolute inset-0">
-        <InteractiveMapGPS 
+        <InteractiveMapLeaflet 
           isDarkMode={false} 
           fullScreen 
           selectedLocationId={isNavigating ? selectedDestination?.id : undefined}

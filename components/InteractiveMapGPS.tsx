@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { MapPin, ZoomIn, ZoomOut, AlertCircle } from 'lucide-react';
-import { Stage, Layer, Image as KonvaImage, Circle, Line, Arrow } from 'react-konva';
+import { Stage, Layer, Image as KonvaImage, Circle, Line, Arrow, Rect } from 'react-konva';
 import useImage from 'use-image';
 import type Konva from 'konva';
 
@@ -26,25 +26,49 @@ interface InteractiveMapGPSProps {
 // 🔧 CALIBRATION SETTINGS - YOUR SCHOOL'S FLOOR PLAN
 // ============================================================
 // 
-// Your building coordinates (from Google Maps):
-// Point 1: 6.9116635825967565, 122.07666275543426 (Top-Left of image)
-// Point 2: 6.909120000145716, 122.07545898345766 (Bottom-Right of image)
+// FLOOR PLAN IS ROTATED 45° from standard map orientation
+// The building sits diagonally on the real map
 //
-// NOTE: Your floor plan image top-left should correspond to the first GPS point
-// and bottom-right should correspond to the second GPS point.
-
-const GPS_BOUNDARIES = {
-  // These coordinates define how GPS maps to your floor plan image
-  // Top-Left of your floor plan image
-  topLeft: { lat: 6.9116635825967565, lng: 122.07666275543426 },
-  // Bottom-Right of your floor plan image
-  bottomRight: { lat: 6.909120000145716, lng: 122.07545898345766 },
+// Corner coordinates from Google Maps:
+// Top-Left (image):     6.910682215525977, 122.07494812282795
+// Top-Right (image):    6.911694254662391, 122.07671516345582
+// Bottom-Left (image):  6.908425735280729, 122.07565795966138
+// Bottom-Right (image): 6.9090104720590775, 122.07742500028922
+//
+const GPS_CORNERS = {
+  topLeft:     { lat: 6.910682215525977, lng: 122.07494812282795 },
+  topRight:    { lat: 6.911694254662391, lng: 122.07671516345582 },
+  bottomLeft:  { lat: 6.908425735280729, lng: 122.07565795966138 },
+  bottomRight: { lat: 6.9090104720590775, lng: 122.07742500028922 },
 };
+
+// For compatibility, also define boundaries as bounding box
+const GPS_BOUNDARIES = {
+  topLeft: { lat: Math.max(GPS_CORNERS.topLeft.lat, GPS_CORNERS.topRight.lat), 
+             lng: Math.max(GPS_CORNERS.topRight.lng, GPS_CORNERS.bottomRight.lng) },
+  bottomRight: { lat: Math.min(GPS_CORNERS.bottomLeft.lat, GPS_CORNERS.bottomRight.lat), 
+                 lng: Math.min(GPS_CORNERS.topLeft.lng, GPS_CORNERS.bottomLeft.lng) },
+};
+
+// Building rotation angle (degrees) - the floor plan image needs to be rotated
+// to match the real-world diagonal orientation
+const BUILDING_ROTATION = -45; // Rotate 45° counterclockwise (left)
+
+// Real-world dimensions for pixel-to-meter conversion
+// Campus is approximately 280m diagonal based on coordinates
+const REAL_WIDTH_METERS = 280;
+const REAL_HEIGHT_METERS = 200;
 
 // Your floor plan image dimensions (check your image file properties)
 // Run: sips -g pixelWidth -g pixelHeight /path/to/your/image.png
 const FLOOR_PLAN_WIDTH = 2000;
 const FLOOR_PLAN_HEIGHT = 1455;
+
+// Extended canvas size for showing position outside the building
+// This creates a large "infinite" white area around the floor plan
+const CANVAS_PADDING = 5000; // 5000 pixels of white space on each side
+const CANVAS_WIDTH = FLOOR_PLAN_WIDTH + (CANVAS_PADDING * 2);
+const CANVAS_HEIGHT = FLOOR_PLAN_HEIGHT + (CANVAS_PADDING * 2);
 
 // The floor plan image file (place in /public folder)
 const FLOOR_PLAN_IMAGE = "/HospitalFloorPlan.png";
@@ -82,43 +106,166 @@ const locations: Location[] = [
 ];
 
 function gpsToPixel(lat: number, lng: number): { x: number; y: number; isOutside: boolean } {
-  const { topLeft, bottomRight } = GPS_BOUNDARIES;
+  // Use bilinear interpolation with 4 corners for diagonal/rotated building
+  // This maps GPS coordinates to pixel positions accounting for the 45° rotation
   
-  // Calculate the GPS ranges
-  const latRange = topLeft.lat - bottomRight.lat;  // Top has higher lat
-  const lngRange = topLeft.lng - bottomRight.lng;  // Handles any lng direction
+  const { topLeft, topRight, bottomLeft } = GPS_CORNERS;
   
-  // Calculate relative position (0 to 1)
-  // For latitude: top of image = topLeft.lat, bottom = bottomRight.lat
-  const relY = (topLeft.lat - lat) / latRange;
-  // For longitude: left of image = topLeft.lng, right = bottomRight.lng  
-  const relX = (topLeft.lng - lng) / lngRange;
+  // Create vectors for the quadrilateral edges
+  // Top edge: topLeft to topRight
+  // Left edge: topLeft to bottomLeft
+  
+  // We'll use a parametric approach:
+  // Point P = (1-u)(1-v)*TL + u*(1-v)*TR + (1-u)*v*BL + u*v*BR
+  // where u is horizontal parameter (0=left, 1=right)
+  // and v is vertical parameter (0=top, 1=bottom)
+  
+  // Solve for u and v given lat/lng (approximate using inverse mapping)
+  // For a roughly parallelogram shape, we can use a simpler approach:
+  
+  // Calculate the "horizontal" direction (top-left to top-right)
+  const hDirLat = topRight.lat - topLeft.lat;
+  const hDirLng = topRight.lng - topLeft.lng;
+  
+  // Calculate the "vertical" direction (top-left to bottom-left)
+  const vDirLat = bottomLeft.lat - topLeft.lat;
+  const vDirLng = bottomLeft.lng - topLeft.lng;
+  
+  // Vector from topLeft to the point
+  const pLat = lat - topLeft.lat;
+  const pLng = lng - topLeft.lng;
+  
+  // Solve the 2x2 linear system to find u and v:
+  // pLat = u * hDirLat + v * vDirLat
+  // pLng = u * hDirLng + v * vDirLng
+  
+  const det = hDirLat * vDirLng - hDirLng * vDirLat;
+  
+  if (Math.abs(det) < 1e-10) {
+    // Degenerate case - fall back to simple bounding box
+    const { topLeft: tl, bottomRight: br } = GPS_BOUNDARIES;
+    const relX = (lat - br.lat) / (tl.lat - br.lat);
+    const relY = (lng - br.lng) / (tl.lng - br.lng);
+    return {
+      x: CANVAS_PADDING + ((1 - relX) * FLOOR_PLAN_WIDTH),
+      y: CANVAS_PADDING + ((1 - relY) * FLOOR_PLAN_HEIGHT),
+      isOutside: relX < 0 || relX > 1 || relY < 0 || relY > 1,
+    };
+  }
+  
+  // Cramer's rule to solve for u and v
+  const u = (pLat * vDirLng - pLng * vDirLat) / det;
+  const v = (hDirLat * pLng - hDirLng * pLat) / det;
+  
+  // u=0 means left edge of image, u=1 means right edge
+  // v=0 means top edge of image, v=1 means bottom edge
   
   // Check if user is within the building boundaries
-  const isOutside = relX < 0 || relX > 1 || relY < 0 || relY > 1;
+  const isOutside = u < 0 || u > 1 || v < 0 || v > 1;
   
-  // Clamp the position to keep it within the visible map area (with some margin)
-  const margin = 0.02; // 2% margin from edges
-  const clampedX = Math.max(margin, Math.min(1 - margin, relX));
-  const clampedY = Math.max(margin, Math.min(1 - margin, relY));
+  // Map to pixel coordinates in floor plan space
+  const floorPlanX = CANVAS_PADDING + (u * FLOOR_PLAN_WIDTH);
+  const floorPlanY = CANVAS_PADDING + (v * FLOOR_PLAN_HEIGHT);
+  
+  // Transform to rotated canvas space to match the rotated floor plan image
+  const rotated = transformToRotatedSpace(floorPlanX, floorPlanY);
   
   return {
-    x: clampedX * FLOOR_PLAN_WIDTH,
-    y: clampedY * FLOOR_PLAN_HEIGHT,
+    x: rotated.x,
+    y: rotated.y,
     isOutside,
+  };
+}
+
+// Transform pixel coordinates from floor plan space to rotated canvas space
+// This accounts for the 45° rotation of the floor plan image
+function transformToRotatedSpace(x: number, y: number): { x: number; y: number } {
+  const centerX = CANVAS_PADDING + FLOOR_PLAN_WIDTH / 2;
+  const centerY = CANVAS_PADDING + FLOOR_PLAN_HEIGHT / 2;
+  
+  // Translate to center
+  const dx = x - centerX;
+  const dy = y - centerY;
+  
+  // Rotate by BUILDING_ROTATION degrees
+  const angleRad = (BUILDING_ROTATION * Math.PI) / 180;
+  const rotatedX = dx * Math.cos(angleRad) - dy * Math.sin(angleRad);
+  const rotatedY = dx * Math.sin(angleRad) + dy * Math.cos(angleRad);
+  
+  // Translate back
+  return {
+    x: centerX + rotatedX,
+    y: centerY + rotatedY,
   };
 }
 
 function FloorPlanImage({ src }: { src: string }) {
   const [image] = useImage(src);
-  return <KonvaImage image={image} width={FLOOR_PLAN_WIDTH} height={FLOOR_PLAN_HEIGHT} />;
+  
+  // Calculate center point for rotation
+  const centerX = CANVAS_PADDING + FLOOR_PLAN_WIDTH / 2;
+  const centerY = CANVAS_PADDING + FLOOR_PLAN_HEIGHT / 2;
+  
+  return (
+    <>
+      {/* Infinite white/light gray background extending beyond the floor plan */}
+      <Rect
+        x={0}
+        y={0}
+        width={CANVAS_WIDTH}
+        height={CANVAS_HEIGHT}
+        fill="#f5f5f5"
+      />
+      {/* Grid pattern to help visualize distance outside building */}
+      {Array.from({ length: Math.ceil(CANVAS_WIDTH / 200) }).map((_, i) => (
+        <Line
+          key={`vgrid-${i}`}
+          points={[i * 200, 0, i * 200, CANVAS_HEIGHT]}
+          stroke="#e0e0e0"
+          strokeWidth={1}
+        />
+      ))}
+      {Array.from({ length: Math.ceil(CANVAS_HEIGHT / 200) }).map((_, i) => (
+        <Line
+          key={`hgrid-${i}`}
+          points={[0, i * 200, CANVAS_WIDTH, i * 200]}
+          stroke="#e0e0e0"
+          strokeWidth={1}
+        />
+      ))}
+      {/* Building outline/border - rotated to match real-world orientation */}
+      <Rect
+        x={CANVAS_PADDING}
+        y={CANVAS_PADDING}
+        width={FLOOR_PLAN_WIDTH}
+        height={FLOOR_PLAN_HEIGHT}
+        stroke="#3b82f6"
+        strokeWidth={4}
+        dash={[10, 5]}
+        rotation={BUILDING_ROTATION}
+        offsetX={-FLOOR_PLAN_WIDTH / 2}
+        offsetY={-FLOOR_PLAN_HEIGHT / 2}
+      />
+      {/* The actual floor plan image - rotated 45° to match the diagonal building */}
+      <KonvaImage 
+        image={image} 
+        x={centerX}
+        y={centerY}
+        width={FLOOR_PLAN_WIDTH} 
+        height={FLOOR_PLAN_HEIGHT}
+        rotation={BUILDING_ROTATION}
+        offsetX={FLOOR_PLAN_WIDTH / 2}
+        offsetY={FLOOR_PLAN_HEIGHT / 2}
+      />
+    </>
+  );
 }
 
 export default function InteractiveMapGPS({ isDarkMode = false, fullScreen = false, selectedLocationId, onDistanceUpdate }: InteractiveMapGPSProps) {
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
   const [zoom, setZoom] = useState(1);
-  // Default position set for simulation mode testing
-  const [userPosition, setUserPosition] = useState<{ x: number; y: number } | null>({ x: 600, y: 900 });
+  // Default position set for simulation mode testing (with CANVAS_PADDING offset)
+  const [userPosition, setUserPosition] = useState<{ x: number; y: number } | null>({ x: CANVAS_PADDING + 600, y: CANVAS_PADDING + 900 });
   const [isUserOutside, setIsUserOutside] = useState(false);
   const [userHeading, setUserHeading] = useState<number>(0);
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
@@ -324,7 +471,8 @@ export default function InteractiveMapGPS({ isDarkMode = false, fullScreen = fal
   useEffect(() => {
     if (fullScreen && userPosition && stageRef.current && !hasInitialZoomRef.current) {
       const stage = stageRef.current;
-      const newZoom = 2.5;
+      // Use lower zoom if outside building
+      const newZoom = isUserOutside ? 0.5 : 2.5;
       const centerX = (stage.width() / 2) - (userPosition.x * newZoom);
       const centerY = (stage.height() / 2) - (userPosition.y * newZoom);
       
@@ -334,15 +482,20 @@ export default function InteractiveMapGPS({ isDarkMode = false, fullScreen = fal
         hasInitialZoomRef.current = true;
       }, 0);
     }
-  }, [userPosition, fullScreen]);
+  }, [userPosition, fullScreen, isUserOutside]);
 
   // Zoom to selected location
   useEffect(() => {
     if (fullScreen && selectedLocation && stageRef.current) {
       const stage = stageRef.current;
       const newZoom = 2.5;
-      const centerX = (stage.width() / 2) - (selectedLocation.x * newZoom);
-      const centerY = (stage.height() / 2) - (selectedLocation.y * newZoom);
+      // Transform location to rotated space
+      const destPos = transformToRotatedSpace(
+        CANVAS_PADDING + selectedLocation.x,
+        CANVAS_PADDING + selectedLocation.y
+      );
+      const centerX = (stage.width() / 2) - (destPos.x * newZoom);
+      const centerY = (stage.height() / 2) - (destPos.y * newZoom);
       
       setTimeout(() => {
         setZoom(newZoom);
@@ -354,12 +507,20 @@ export default function InteractiveMapGPS({ isDarkMode = false, fullScreen = fal
   // Calculate and update distance when user position or selected location changes
   useEffect(() => {
     if (userPosition && selectedLocation && onDistanceUpdate) {
-      const dx = selectedLocation.x - userPosition.x;
-      const dy = selectedLocation.y - userPosition.y;
+      // Transform destination to rotated space for accurate distance
+      const destPos = transformToRotatedSpace(
+        CANVAS_PADDING + selectedLocation.x,
+        CANVAS_PADDING + selectedLocation.y
+      );
+      const dx = destPos.x - userPosition.x;
+      const dy = destPos.y - userPosition.y;
       const pixelDistance = Math.sqrt(dx * dx + dy * dy);
       
-      // Approximate: 100 pixels ≈ 10 meters in this floor plan
-      const metersDistance = (pixelDistance / 100) * 10;
+      // Convert pixels to meters using real-world campus dimensions
+      const metersPerPixelX = REAL_HEIGHT_METERS / FLOOR_PLAN_WIDTH;
+      const metersPerPixelY = REAL_WIDTH_METERS / FLOOR_PLAN_HEIGHT;
+      const avgMetersPerPixel = (metersPerPixelX + metersPerPixelY) / 2;
+      const metersDistance = pixelDistance * avgMetersPerPixel;
       onDistanceUpdate(metersDistance);
     }
   }, [userPosition, selectedLocation, onDistanceUpdate]);
@@ -476,12 +637,17 @@ export default function InteractiveMapGPS({ isDarkMode = false, fullScreen = fal
     const mapX = (pointer.x - stagePos.x) / zoom;
     const mapY = (pointer.y - stagePos.y) / zoom;
     
-    // Ensure position is within the map bounds
-    if (mapX >= 0 && mapX <= FLOOR_PLAN_WIDTH && mapY >= 0 && mapY <= FLOOR_PLAN_HEIGHT) {
-      setUserPosition({ x: mapX, y: mapY });
-      setIsUserOutside(false);
-      setGpsError(null);
-    }
+    // Allow clicking anywhere on the extended canvas
+    // Check if inside building (accounting for padding offset)
+    const insideBuilding = 
+      mapX >= CANVAS_PADDING && 
+      mapX <= CANVAS_PADDING + FLOOR_PLAN_WIDTH && 
+      mapY >= CANVAS_PADDING && 
+      mapY <= CANVAS_PADDING + FLOOR_PLAN_HEIGHT;
+    
+    setUserPosition({ x: mapX, y: mapY });
+    setIsUserOutside(!insideBuilding);
+    setGpsError(insideBuilding ? null : 'Outside building area');
   };
 
   return (
@@ -548,7 +714,8 @@ export default function InteractiveMapGPS({ isDarkMode = false, fullScreen = fal
                   onClick={() => {
                     if (stageRef.current && userPosition) {
                       const stage = stageRef.current;
-                      const newZoom = 2.5;
+                      // Use lower zoom if outside building to see more context
+                      const newZoom = isUserOutside ? 0.8 : 2.5;
                       const centerX = (stage.width() / 2) - (userPosition.x * newZoom);
                       const centerY = (stage.height() / 2) - (userPosition.y * newZoom);
                       setZoom(newZoom);
@@ -570,7 +737,7 @@ export default function InteractiveMapGPS({ isDarkMode = false, fullScreen = fal
                   if (newSimMode) {
                     // When enabling simulation, set a default position if none exists
                     if (!userPosition) {
-                      setUserPosition({ x: 600, y: 900 });
+                      setUserPosition({ x: CANVAS_PADDING + 600, y: CANVAS_PADDING + 900 });
                       setIsUserOutside(false);
                     }
                     setGpsError(null);
@@ -587,6 +754,24 @@ export default function InteractiveMapGPS({ isDarkMode = false, fullScreen = fal
               >
                 <MapPin className="w-4 h-4" />
                 {simulationMode ? '📍 Tap Map to Move' : 'Use Real GPS'}
+              </button>
+
+              {/* Go to Building button - helps find the building when far away */}
+              <button
+                onClick={() => {
+                  if (stageRef.current) {
+                    const stage = stageRef.current;
+                    const newZoom = 1;
+                    // Center on the building (which starts at CANVAS_PADDING)
+                    const centerX = (stage.width() / 2) - ((CANVAS_PADDING + FLOOR_PLAN_WIDTH / 2) * newZoom);
+                    const centerY = (stage.height() / 2) - ((CANVAS_PADDING + FLOOR_PLAN_HEIGHT / 2) * newZoom);
+                    setZoom(newZoom);
+                    setStagePos({ x: centerX, y: centerY });
+                  }
+                }}
+                className="px-3 py-2 rounded-full shadow-xl text-xs font-semibold transition-all flex items-center gap-2 bg-green-500 text-white hover:bg-green-600"
+              >
+                🏥 Go to Building
               </button>
 
               {/* Simulation Mode Instructions */}
@@ -727,53 +912,76 @@ export default function InteractiveMapGPS({ isDarkMode = false, fullScreen = fal
                       <FloorPlanImage src={FLOOR_PLAN_IMAGE} />
                       
                       {/* Navigation path - draw line from user to destination */}
-                      {userPosition && selectedLocation && (
-                        <>
-                          <Line
-                            points={[userPosition.x, userPosition.y, selectedLocation.x, selectedLocation.y]}
-                            stroke="#a855f7"
-                            strokeWidth={6}
-                            lineCap="round"
-                            lineJoin="round"
-                            dash={[20, 10]}
-                            shadowBlur={10}
-                            shadowColor="#a855f7"
-                            shadowOpacity={0.5}
-                          />
-                          <Arrow
-                            points={[userPosition.x, userPosition.y, selectedLocation.x, selectedLocation.y]}
-                            stroke="#8b5cf6"
-                            fill="#8b5cf6"
-                            strokeWidth={4}
-                            pointerLength={20}
-                            pointerWidth={20}
-                          />
-                        </>
-                      )}
+                      {userPosition && selectedLocation && (() => {
+                        // Transform destination location to rotated space
+                        const destPos = transformToRotatedSpace(
+                          CANVAS_PADDING + selectedLocation.x,
+                          CANVAS_PADDING + selectedLocation.y
+                        );
+                        return (
+                          <>
+                            <Line
+                              points={[
+                                userPosition.x, 
+                                userPosition.y, 
+                                destPos.x,
+                                destPos.y
+                              ]}
+                              stroke="#a855f7"
+                              strokeWidth={6}
+                              lineCap="round"
+                              lineJoin="round"
+                              dash={[20, 10]}
+                              shadowBlur={10}
+                              shadowColor="#a855f7"
+                              shadowOpacity={0.5}
+                            />
+                            <Arrow
+                              points={[
+                                userPosition.x, 
+                                userPosition.y, 
+                                destPos.x,
+                                destPos.y
+                              ]}
+                              stroke="#8b5cf6"
+                              fill="#8b5cf6"
+                              strokeWidth={4}
+                              pointerLength={20}
+                              pointerWidth={20}
+                            />
+                          </>
+                        );
+                      })()}
                       
                       {/* Destination marker */}
-                      {selectedLocation && (
-                        <>
-                          <Circle
-                            x={selectedLocation.x}
-                            y={selectedLocation.y}
-                            radius={30}
-                            fill={selectedLocation.color}
-                            opacity={0.2}
-                          />
-                          <Circle
-                            x={selectedLocation.x}
-                            y={selectedLocation.y}
-                            radius={15}
-                            fill={selectedLocation.color}
-                            stroke="#ffffff"
-                            strokeWidth={4}
-                            shadowBlur={15}
-                            shadowColor={selectedLocation.color}
-                            shadowOpacity={0.6}
-                          />
-                        </>
-                      )}
+                      {selectedLocation && (() => {
+                        const destPos = transformToRotatedSpace(
+                          CANVAS_PADDING + selectedLocation.x,
+                          CANVAS_PADDING + selectedLocation.y
+                        );
+                        return (
+                          <>
+                            <Circle
+                              x={destPos.x}
+                              y={destPos.y}
+                              radius={30}
+                              fill={selectedLocation.color}
+                              opacity={0.2}
+                            />
+                            <Circle
+                              x={destPos.x}
+                              y={destPos.y}
+                              radius={15}
+                              fill={selectedLocation.color}
+                              stroke="#ffffff"
+                              strokeWidth={4}
+                              shadowBlur={15}
+                              shadowColor={selectedLocation.color}
+                              shadowOpacity={0.6}
+                            />
+                          </>
+                        );
+                      })()}
                       
                       {/* User position marker with compass */}
                       {userPosition && (

@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Leaflet CSS */
+@import "leaflet/dist/leaflet.css";
+
 /* Custom Fonts */
 @font-face {
   font-family: 'LemonJelly';
