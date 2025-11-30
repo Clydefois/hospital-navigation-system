@@ -31,6 +31,16 @@ const GPS_BOUNDARIES = {
 const FLOOR_PLAN_WIDTH = 1056;
 const FLOOR_PLAN_HEIGHT = 768;
 
+// Extended boundaries for showing position even when slightly outside
+const EXTENDED_MARGIN = 0.0005; // ~50 meters buffer around the building
+const GPS_BOUNDARIES_EXTENDED = {
+  topLeft: { lat: GPS_BOUNDARIES.topLeft.lat + EXTENDED_MARGIN, lng: GPS_BOUNDARIES.topLeft.lng - EXTENDED_MARGIN },
+  bottomRight: { lat: GPS_BOUNDARIES.bottomRight.lat - EXTENDED_MARGIN, lng: GPS_BOUNDARIES.bottomRight.lng + EXTENDED_MARGIN },
+};
+
+// Use extended boundaries for debug info display
+void GPS_BOUNDARIES_EXTENDED;
+
 const locations: Location[] = [
   { id: '1', name: 'Emergency Room', category: 'Emergency', color: '#ef4444', x: 603, y: 635 },
   { id: '2', name: 'Surgery Department', category: 'Department', color: '#8b5cf6', x: 287, y: 422 },
@@ -48,19 +58,25 @@ const locations: Location[] = [
   { id: '14', name: 'Restrooms', category: 'Amenity', color: '#f59e0b', x: 744, y: 310 },
 ];
 
-function gpsToPixel(lat: number, lng: number): { x: number; y: number } | null {
+function gpsToPixel(lat: number, lng: number): { x: number; y: number; isOutside: boolean } {
   const { topLeft, bottomRight } = GPS_BOUNDARIES;
   
-  if (lat > topLeft.lat || lat < bottomRight.lat || lng < topLeft.lng || lng > bottomRight.lng) {
-    return null;
-  }
-  
+  // Calculate relative position (can be outside 0-1 range if outside boundaries)
   const relX = (lng - topLeft.lng) / (bottomRight.lng - topLeft.lng);
   const relY = (lat - topLeft.lat) / (bottomRight.lat - topLeft.lat);
   
+  // Check if user is within the actual building boundaries
+  const isOutside = lat > topLeft.lat || lat < bottomRight.lat || lng < topLeft.lng || lng > bottomRight.lng;
+  
+  // Clamp the position to keep it within the visible map area (with some margin)
+  const margin = 0.05; // 5% margin from edges
+  const clampedX = Math.max(margin, Math.min(1 - margin, relX));
+  const clampedY = Math.max(margin, Math.min(1 - margin, Math.abs(relY)));
+  
   return {
-    x: relX * FLOOR_PLAN_WIDTH,
-    y: Math.abs(relY) * FLOOR_PLAN_HEIGHT,
+    x: clampedX * FLOOR_PLAN_WIDTH,
+    y: clampedY * FLOOR_PLAN_HEIGHT,
+    isOutside,
   };
 }
 
@@ -73,12 +89,16 @@ export default function InteractiveMapGPS({ isDarkMode = false, fullScreen = fal
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
   const [zoom, setZoom] = useState(1);
   const [userPosition, setUserPosition] = useState<{ x: number; y: number } | null>(null);
+  const [isUserOutside, setIsUserOutside] = useState(false);
   const [userHeading, setUserHeading] = useState<number>(0);
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
   const [gpsError, setGpsError] = useState<string | null>(null);
   const [isTracking, setIsTracking] = useState(false);
   const [containerWidth, setContainerWidth] = useState(FLOOR_PLAN_WIDTH);
   const [isPinching, setIsPinching] = useState(false);
+  const [simulationMode, setSimulationMode] = useState(false);
+  const [rawGpsCoords, setRawGpsCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [compassEnabled, setCompassEnabled] = useState(false);
   const watchIdRef = useRef<number | null>(null);
   const stageRef = useRef<Konva.Stage | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -99,19 +119,66 @@ export default function InteractiveMapGPS({ isDarkMode = false, fullScreen = fal
     return () => window.removeEventListener('resize', updateSize);
   }, []);
 
-  // Track device orientation for compass heading
+  // Track device orientation for compass heading (direction user is facing)
   useEffect(() => {
+    let permissionGranted = false;
+
     const handleOrientation = (event: DeviceOrientationEvent) => {
-      if (event.alpha !== null) {
-        // alpha is the compass direction (0-360 degrees)
-        setUserHeading(event.alpha);
+      // For iOS Safari - webkitCompassHeading gives true north heading
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const iosHeading = (event as any).webkitCompassHeading;
+      
+      if (iosHeading !== undefined && iosHeading !== null) {
+        // iOS: webkitCompassHeading is degrees from north (0-360)
+        // 0 = North, 90 = East, 180 = South, 270 = West
+        setUserHeading(iosHeading);
+        setCompassEnabled(true);
+      } else if (event.alpha !== null) {
+        // Android/Desktop: alpha is the compass direction
+        // For absolute orientation (true north), we need to check event.absolute
+        // alpha: 0-360 degrees, but direction depends on device
+        if (event.absolute) {
+          // Absolute orientation - alpha is relative to true north
+          // Convert: alpha=0 means north, we want arrow pointing north when alpha=0
+          setUserHeading(360 - event.alpha);
+        } else {
+          // Relative orientation - less accurate but still usable
+          setUserHeading(360 - event.alpha);
+        }
+        setCompassEnabled(true);
+      }
+    };
+
+    const requestPermission = async () => {
+      // iOS 13+ requires permission request for DeviceOrientation
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if (typeof (DeviceOrientationEvent as any).requestPermission === 'function') {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const permission = await (DeviceOrientationEvent as any).requestPermission();
+          if (permission === 'granted') {
+            permissionGranted = true;
+            window.addEventListener('deviceorientation', handleOrientation, true);
+          }
+        } catch (error) {
+          console.error('DeviceOrientation permission error:', error);
+        }
+      } else {
+        // Non-iOS or older iOS - no permission needed
+        permissionGranted = true;
+        window.addEventListener('deviceorientation', handleOrientation, true);
       }
     };
 
     if (window.DeviceOrientationEvent) {
-      window.addEventListener('deviceorientation', handleOrientation);
-      return () => window.removeEventListener('deviceorientation', handleOrientation);
+      requestPermission();
     }
+
+    return () => {
+      if (permissionGranted) {
+        window.removeEventListener('deviceorientation', handleOrientation, true);
+      }
+    };
   }, []);
 
   const startTracking = () => {
@@ -126,55 +193,71 @@ export default function InteractiveMapGPS({ isDarkMode = false, fullScreen = fal
     // First get current position immediately
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        const { latitude, longitude } = position.coords;
-        console.log('Current GPS Position:', latitude, longitude);
+        const { latitude, longitude, accuracy } = position.coords;
+        console.log('Current GPS Position:', latitude, longitude, 'Accuracy:', accuracy, 'm');
+        setRawGpsCoords({ lat: latitude, lng: longitude });
         const pixelPos = gpsToPixel(latitude, longitude);
 
-        if (pixelPos) {
-          setUserPosition(pixelPos);
-          console.log('Mapped to pixel:', pixelPos);
-          setGpsError(null);
+        // Always set position - the function now clamps to visible area
+        setUserPosition({ x: pixelPos.x, y: pixelPos.y });
+        setIsUserOutside(pixelPos.isOutside);
+        console.log('Mapped to pixel:', pixelPos, pixelPos.isOutside ? '(outside building)' : '(inside building)');
+        
+        if (pixelPos.isOutside) {
+          setGpsError(`Outside hospital area. Accuracy: ${accuracy.toFixed(0)}m`);
         } else {
-          console.log('Position outside mapped area');
-          setGpsError(`Outside mapped area. Lat: ${latitude.toFixed(6)}, Lng: ${longitude.toFixed(6)}`);
+          setGpsError(null);
         }
       },
       (error) => {
         console.error('GPS Error:', error);
         setGpsError(`GPS Error: ${error.message}`);
+        // Enable simulation mode when GPS fails
+        setSimulationMode(true);
       },
       {
         enableHighAccuracy: true,
-        timeout: 10000,
+        timeout: 15000,
         maximumAge: 0,
       }
     );
 
-    // Then watch for position updates
+    // Watch for REAL-TIME position updates as user moves
     const watchId = navigator.geolocation.watchPosition(
       (position) => {
-        const { latitude, longitude } = position.coords;
-        console.log('GPS Update:', latitude, longitude);
+        const { latitude, longitude, accuracy, heading } = position.coords;
+        console.log('🔄 LIVE GPS Update:', latitude.toFixed(6), longitude.toFixed(6), 'Accuracy:', accuracy.toFixed(0), 'm');
+        
+        setRawGpsCoords({ lat: latitude, lng: longitude });
         const pixelPos = gpsToPixel(latitude, longitude);
 
-        if (pixelPos) {
-          setUserPosition(pixelPos);
-          console.log('Updated position:', pixelPos);
-          setGpsError(null);
+        // Update position in real-time as user moves
+        setUserPosition({ x: pixelPos.x, y: pixelPos.y });
+        setIsUserOutside(pixelPos.isOutside);
+        
+        // Update heading if available (for compass arrow direction)
+        if (heading !== null && !isNaN(heading)) {
+          setUserHeading(heading);
+        }
+        
+        if (pixelPos.isOutside) {
+          setGpsError(`Outside hospital • GPS accuracy: ${accuracy.toFixed(0)}m`);
         } else {
-          console.log('Position outside mapped area');
-          setGpsError(`Outside mapped area. Lat: ${latitude.toFixed(6)}, Lng: ${longitude.toFixed(6)}`);
+          setGpsError(null);
         }
       },
       (error) => {
         console.error('GPS Watch Error:', error);
         setGpsError(`GPS Error: ${error.message}`);
         setIsTracking(false);
+        // Enable simulation mode when GPS fails
+        setSimulationMode(true);
       },
       {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 5000,
+        // CRITICAL: These settings enable real-time tracking
+        enableHighAccuracy: true,  // Use GPS instead of WiFi/Cell
+        timeout: 5000,             // Faster timeout for quicker updates
+        maximumAge: 0,             // Always get fresh position, never use cached
       }
     );
 
@@ -205,9 +288,10 @@ export default function InteractiveMapGPS({ isDarkMode = false, fullScreen = fal
     }
   }, [selectedLocationId, isTracking]);
 
-  // Zoom to location when user position changes
+  // Zoom to location when user position changes (only on first position)
+  const hasInitialZoomRef = useRef(false);
   useEffect(() => {
-    if (fullScreen && userPosition && stageRef.current) {
+    if (fullScreen && userPosition && stageRef.current && !hasInitialZoomRef.current) {
       const stage = stageRef.current;
       const newZoom = 2.5;
       const centerX = (stage.width() / 2) - (userPosition.x * newZoom);
@@ -216,6 +300,7 @@ export default function InteractiveMapGPS({ isDarkMode = false, fullScreen = fal
       setTimeout(() => {
         setZoom(newZoom);
         setStagePos({ x: centerX, y: centerY });
+        hasInitialZoomRef.current = true;
       }, 0);
     }
   }, [userPosition, fullScreen]);
@@ -346,6 +431,28 @@ export default function InteractiveMapGPS({ isDarkMode = false, fullScreen = fal
     setStagePos(newPos);
   };
 
+  // Handle tap/click for simulation mode - allows users to tap on map to set their position
+  const handleStageClick = () => {
+    if (!simulationMode) return;
+    
+    const stage = stageRef.current;
+    if (!stage) return;
+    
+    const pointer = stage.getPointerPosition();
+    if (!pointer) return;
+    
+    // Convert screen position to map coordinates
+    const mapX = (pointer.x - stagePos.x) / zoom;
+    const mapY = (pointer.y - stagePos.y) / zoom;
+    
+    // Ensure position is within the map bounds
+    if (mapX >= 0 && mapX <= FLOOR_PLAN_WIDTH && mapY >= 0 && mapY <= FLOOR_PLAN_HEIGHT) {
+      setUserPosition({ x: mapX, y: mapY });
+      setIsUserOutside(false);
+      setGpsError(null);
+    }
+  };
+
   return (
     <div className={fullScreen ? "w-full h-full relative" : "w-full relative px-3 md:px-6 pb-6 md:pb-8"}>
       {/* Minimalist Container */}
@@ -401,6 +508,116 @@ export default function InteractiveMapGPS({ isDarkMode = false, fullScreen = fal
             )}
           </div>
 
+          {/* Simulation Mode Toggle & GPS Info - Bottom Left in fullscreen */}
+          {fullScreen && (
+            <div className="absolute bottom-28 left-4 z-20 flex flex-col gap-2">
+              {/* Re-center on user button */}
+              {userPosition && (
+                <button
+                  onClick={() => {
+                    if (stageRef.current && userPosition) {
+                      const stage = stageRef.current;
+                      const newZoom = 2.5;
+                      const centerX = (stage.width() / 2) - (userPosition.x * newZoom);
+                      const centerY = (stage.height() / 2) - (userPosition.y * newZoom);
+                      setZoom(newZoom);
+                      setStagePos({ x: centerX, y: centerY });
+                    }
+                  }}
+                  className="px-3 py-2 rounded-full shadow-xl text-xs font-semibold transition-all flex items-center gap-2 bg-blue-500 text-white hover:bg-blue-600"
+                >
+                  <MapPin className="w-4 h-4" />
+                  Re-center
+                </button>
+              )}
+
+              {/* Simulation Mode Toggle */}
+              <button
+                onClick={() => {
+                  setSimulationMode(!simulationMode);
+                  if (!simulationMode) {
+                    // When enabling simulation, set a default position if none exists
+                    if (!userPosition) {
+                      setUserPosition({ x: FLOOR_PLAN_WIDTH / 2, y: FLOOR_PLAN_HEIGHT / 2 });
+                      setIsUserOutside(false);
+                    }
+                  }
+                }}
+                className={`px-3 py-2 rounded-full shadow-xl text-xs font-semibold transition-all flex items-center gap-2 ${
+                  simulationMode 
+                    ? 'bg-orange-500 text-white' 
+                    : 'bg-white/90 text-gray-700 hover:bg-white'
+                }`}
+              >
+                <MapPin className="w-4 h-4" />
+                {simulationMode ? 'Tap to Move' : 'Simulate Location'}
+              </button>
+
+              {/* Live GPS Status */}
+              {isTracking && (
+                <div className="bg-green-500 text-white px-3 py-2 rounded-lg text-xs flex items-center gap-2">
+                  <span className="w-2 h-2 bg-white rounded-full animate-pulse" />
+                  <span className="font-medium">Live Tracking</span>
+                </div>
+              )}
+
+              {/* Compass Status / Enable Button */}
+              {!compassEnabled ? (
+                <button
+                  onClick={async () => {
+                    // Request compass permission on iOS
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    if (typeof (DeviceOrientationEvent as any).requestPermission === 'function') {
+                      try {
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        const permission = await (DeviceOrientationEvent as any).requestPermission();
+                        if (permission === 'granted') {
+                          setCompassEnabled(true);
+                        }
+                      } catch (error) {
+                        console.error('Compass permission error:', error);
+                      }
+                    }
+                  }}
+                  className="px-3 py-2 rounded-full shadow-xl text-xs font-semibold transition-all flex items-center gap-2 bg-purple-500 text-white hover:bg-purple-600"
+                >
+                  <span>🧭</span>
+                  Enable Compass
+                </button>
+              ) : (
+                <div className="bg-purple-500/90 text-white px-3 py-2 rounded-lg text-xs flex items-center gap-2">
+                  <span>🧭</span>
+                  <span className="font-medium">{Math.round(userHeading)}°</span>
+                </div>
+              )}
+
+              {/* GPS Coordinates Display */}
+              {rawGpsCoords && (
+                <div className="bg-black/70 text-white px-3 py-2 rounded-lg text-xs">
+                  <div className="flex items-center gap-1">
+                    <span className={`w-2 h-2 rounded-full ${isUserOutside ? 'bg-orange-500' : 'bg-green-500'}`} />
+                    <span>{isUserOutside ? 'Outside' : 'Inside'}</span>
+                  </div>
+                  <div className="mt-1 font-mono text-[10px] opacity-80">
+                    {rawGpsCoords.lat.toFixed(6)}, {rawGpsCoords.lng.toFixed(6)}
+                  </div>
+                </div>
+              )}
+
+              {/* User position indicator */}
+              {userPosition && (
+                <div className="bg-white/90 px-3 py-2 rounded-lg shadow-lg text-xs">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-3 h-3 rounded-full ${isUserOutside ? 'bg-orange-500' : 'bg-blue-500'}`} />
+                    <span className="font-medium text-gray-700">
+                      {isUserOutside ? 'Approximate Location' : 'Your Location'}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Map Canvas */}
           <div className={fullScreen 
             ? "w-full h-full bg-gray-200 flex items-center justify-center" 
@@ -429,6 +646,8 @@ export default function InteractiveMapGPS({ isDarkMode = false, fullScreen = fal
                     onTouchMove={handleTouchMove}
                     onTouchEnd={handleTouchEnd}
                     onWheel={handleWheel}
+                    onClick={handleStageClick}
+                    onTap={handleStageClick}
                   >
                     <Layer>
                       <FloorPlanImage src="/HospitalFloorPlan.png" />
@@ -485,43 +704,86 @@ export default function InteractiveMapGPS({ isDarkMode = false, fullScreen = fal
                       {/* User position marker with compass */}
                       {userPosition && (
                         <>
-                          {/* Outer glow circle */}
+                          {/* Accuracy/range circle - shows GPS accuracy zone */}
                           <Circle
                             x={userPosition.x}
                             y={userPosition.y}
-                            radius={18}
-                            fill="#3b82f6"
-                            opacity={0.15}
+                            radius={isUserOutside ? 30 : 22}
+                            fill={isUserOutside ? "#f59e0b" : "#3b82f6"}
+                            opacity={0.1}
                           />
-                          {/* Main blue dot */}
+                          
+                          {/* Direction cone/fan showing where user is facing */}
+                          {compassEnabled && (
+                            <Line
+                              points={[
+                                userPosition.x,
+                                userPosition.y,
+                                userPosition.x + Math.sin(((userHeading - 25) * Math.PI) / 180) * 45,
+                                userPosition.y - Math.cos(((userHeading - 25) * Math.PI) / 180) * 45,
+                                userPosition.x + Math.sin((userHeading * Math.PI) / 180) * 55,
+                                userPosition.y - Math.cos((userHeading * Math.PI) / 180) * 55,
+                                userPosition.x + Math.sin(((userHeading + 25) * Math.PI) / 180) * 45,
+                                userPosition.y - Math.cos(((userHeading + 25) * Math.PI) / 180) * 45,
+                                userPosition.x,
+                                userPosition.y,
+                              ]}
+                              fill={isUserOutside ? "#f59e0b" : "#3b82f6"}
+                              opacity={0.25}
+                              closed={true}
+                            />
+                          )}
+                          
+                          {/* Pulsing ring for better visibility */}
                           <Circle
                             x={userPosition.x}
                             y={userPosition.y}
-                            radius={8}
-                            fill="#3b82f6"
+                            radius={isUserOutside ? 20 : 14}
+                            stroke={isUserOutside ? "#f59e0b" : "#3b82f6"}
+                            strokeWidth={2}
+                            opacity={0.4}
+                          />
+                          
+                          {/* Main blue/orange dot */}
+                          <Circle
+                            x={userPosition.x}
+                            y={userPosition.y}
+                            radius={10}
+                            fill={isUserOutside ? "#f59e0b" : "#3b82f6"}
                             stroke="#ffffff"
                             strokeWidth={3}
-                            shadowBlur={10}
-                            shadowColor="#3b82f6"
-                            shadowOpacity={0.7}
+                            shadowBlur={12}
+                            shadowColor={isUserOutside ? "#f59e0b" : "#3b82f6"}
+                            shadowOpacity={0.8}
                           />
-                          {/* Compass direction arrow */}
-                          <Arrow
-                            points={[
-                              userPosition.x,
-                              userPosition.y,
-                              userPosition.x + Math.sin((userHeading * Math.PI) / 180) * 25,
-                              userPosition.y - Math.cos((userHeading * Math.PI) / 180) * 25,
-                            ]}
-                            stroke="#3b82f6"
-                            fill="#3b82f6"
-                            strokeWidth={3}
-                            pointerLength={8}
-                            pointerWidth={8}
-                            shadowBlur={5}
-                            shadowColor="#3b82f6"
-                            shadowOpacity={0.5}
+                          
+                          {/* Inner white dot for Google Maps style */}
+                          <Circle
+                            x={userPosition.x}
+                            y={userPosition.y}
+                            radius={4}
+                            fill="#ffffff"
                           />
+                          
+                          {/* Compass direction arrow - shows which way device is facing */}
+                          {compassEnabled && (
+                            <Arrow
+                              points={[
+                                userPosition.x,
+                                userPosition.y,
+                                userPosition.x + Math.sin((userHeading * Math.PI) / 180) * 35,
+                                userPosition.y - Math.cos((userHeading * Math.PI) / 180) * 35,
+                              ]}
+                              stroke={isUserOutside ? "#f59e0b" : "#3b82f6"}
+                              fill={isUserOutside ? "#f59e0b" : "#3b82f6"}
+                              strokeWidth={4}
+                              pointerLength={12}
+                              pointerWidth={12}
+                              shadowBlur={8}
+                              shadowColor={isUserOutside ? "#f59e0b" : "#3b82f6"}
+                              shadowOpacity={0.6}
+                            />
+                          )}
                         </>
                       )}
                     </Layer>
