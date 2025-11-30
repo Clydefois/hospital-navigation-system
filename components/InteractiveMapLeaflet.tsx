@@ -281,27 +281,31 @@ function findPathAStar(
 ): { x: number; y: number }[] {
   console.log('Starting pathfinding from', start, 'to', end);
   
-  // If direct path is clear, return it
-  if (isPathClear(start.x, start.y, end.x, end.y, obstacles)) {
-    console.log('Direct path is clear');
-    return [start, end];
-  }
+  // Always use waypoints-based pathfinding to ensure we follow roads
+  console.log('Using A* pathfinding with road waypoints');
   
-  console.log('Direct path blocked, using A* with waypoints');
-  
-  // Generate waypoints from roads (intersections and corners)
+  // Generate comprehensive waypoints from roads
   const waypoints: { x: number; y: number }[] = [start];
   
-  // Add all road corners as waypoints
+  // Add all road corners AND centers as waypoints for better coverage
   for (const road of roads) {
     // Skip walls (pathways without labels)
     if (!road.label) continue;
     
-    // Add all 4 corners of each road segment
+    // Add all 4 corners
     waypoints.push({ x: road.x, y: road.y });
     waypoints.push({ x: road.x + road.width, y: road.y });
     waypoints.push({ x: road.x, y: road.y + road.height });
     waypoints.push({ x: road.x + road.width, y: road.y + road.height });
+    
+    // Add center point for better connectivity
+    waypoints.push({ x: road.x + road.width / 2, y: road.y + road.height / 2 });
+    
+    // Add midpoints of edges for more routing options
+    waypoints.push({ x: road.x + road.width / 2, y: road.y }); // top middle
+    waypoints.push({ x: road.x + road.width / 2, y: road.y + road.height }); // bottom middle
+    waypoints.push({ x: road.x, y: road.y + road.height / 2 }); // left middle
+    waypoints.push({ x: road.x + road.width, y: road.y + road.height / 2 }); // right middle
   }
   
   // Add destination
@@ -321,18 +325,63 @@ function findPathAStar(
       const p1 = waypoints[i];
       const p2 = waypoints[j];
       
-      // Only connect if path is clear and reasonably close
       const dist = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
-      if (dist < 0.6 && isPathClear(p1.x, p1.y, p2.x, p2.y, obstacles)) {
+      
+      // Only connect nearby waypoints that have clear paths
+      // Reduced distance threshold for more controlled routing
+      if (dist < 0.4 && isPathClear(p1.x, p1.y, p2.x, p2.y, obstacles)) {
         connections.push({ idx: j, dist });
       }
     }
     graph.set(i, connections);
+    
+    // Log if a waypoint has no connections (isolated)
+    if (connections.length === 0 && i > 0 && i < numWaypoints - 1) {
+      console.log(`Warning: Waypoint ${i} at (${waypoints[i].x.toFixed(2)}, ${waypoints[i].y.toFixed(2)}) has no connections`);
+    }
   }
   
   // A* search from start (index 0) to end (last index)
   const startIdx = 0;
   const endIdx = numWaypoints - 1;
+  
+  // Check if start or end are disconnected
+  const startConnections = graph.get(startIdx)?.length || 0;
+  const endConnections = graph.get(endIdx)?.length || 0;
+  
+  console.log(`Start waypoint has ${startConnections} connections`);
+  console.log(`End waypoint has ${endConnections} connections`);
+  
+  if (startConnections === 0 || endConnections === 0) {
+    console.log('Start or end is disconnected, trying to find nearest road waypoints');
+    
+    // Try connecting to nearest waypoints with more lenient distance
+    for (let i = 0; i < numWaypoints; i++) {
+      if (i === startIdx || i === endIdx) continue;
+      
+      const p = waypoints[i];
+      
+      // Try to connect start
+      if (startConnections === 0) {
+        const distToStart = Math.sqrt((p.x - start.x) ** 2 + (p.y - start.y) ** 2);
+        if (distToStart < 0.6 && isPathClear(start.x, start.y, p.x, p.y, obstacles)) {
+          const startConns = graph.get(startIdx) || [];
+          startConns.push({ idx: i, dist: distToStart });
+          graph.set(startIdx, startConns);
+        }
+      }
+      
+      // Try to connect end
+      if (endConnections === 0) {
+        const distToEnd = Math.sqrt((p.x - end.x) ** 2 + (p.y - end.y) ** 2);
+        if (distToEnd < 0.6 && isPathClear(p.x, p.y, end.x, end.y, obstacles)) {
+          const endConns = graph.get(i) || [];
+          endConns.push({ idx: endIdx, dist: distToEnd });
+          graph.set(i, endConns);
+        }
+      }
+    }
+  }
   
   console.log(`Searching path from waypoint ${startIdx} to ${endIdx}`);
   
