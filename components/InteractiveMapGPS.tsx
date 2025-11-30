@@ -22,14 +22,34 @@ interface InteractiveMapGPSProps {
   onDistanceUpdate?: (distance: number) => void;
 }
 
-// Real GPS coordinates from Google Maps: 6.910139503770937, 122.07512615988898
+// ============================================================
+// 🔧 CALIBRATION SETTINGS - YOUR SCHOOL'S FLOOR PLAN
+// ============================================================
+// 
+// Your building coordinates (from Google Maps):
+// Point 1: 6.9116635825967565, 122.07666275543426 (Top-Left of image)
+// Point 2: 6.909120000145716, 122.07545898345766 (Bottom-Right of image)
+//
+// NOTE: Your floor plan image top-left should correspond to the first GPS point
+// and bottom-right should correspond to the second GPS point.
+
 const GPS_BOUNDARIES = {
-  topLeft: { lat: 6.910364, lng: 122.074901 },
-  bottomRight: { lat: 6.909915, lng: 122.075351 },
+  // These coordinates define how GPS maps to your floor plan image
+  // Top-Left of your floor plan image
+  topLeft: { lat: 6.9116635825967565, lng: 122.07666275543426 },
+  // Bottom-Right of your floor plan image
+  bottomRight: { lat: 6.909120000145716, lng: 122.07545898345766 },
 };
 
-const FLOOR_PLAN_WIDTH = 1056;
-const FLOOR_PLAN_HEIGHT = 768;
+// Your floor plan image dimensions (check your image file properties)
+// Run: sips -g pixelWidth -g pixelHeight /path/to/your/image.png
+const FLOOR_PLAN_WIDTH = 2000;
+const FLOOR_PLAN_HEIGHT = 1455;
+
+// The floor plan image file (place in /public folder)
+const FLOOR_PLAN_IMAGE = "/HospitalFloorPlan.png";
+
+// ============================================================
 
 // Extended boundaries for showing position even when slightly outside
 const EXTENDED_MARGIN = 0.0005; // ~50 meters buffer around the building
@@ -41,37 +61,46 @@ const GPS_BOUNDARIES_EXTENDED = {
 // Use extended boundaries for debug info display
 void GPS_BOUNDARIES_EXTENDED;
 
+// Location markers on the floor plan (x, y are pixel coordinates on your image)
+// To find coordinates: open the image in any image editor and hover over locations
+// The scale factor from old (1056x768) to new (2000x1455) is approximately 1.89
 const locations: Location[] = [
-  { id: '1', name: 'Emergency Room', category: 'Emergency', color: '#ef4444', x: 603, y: 635 },
-  { id: '2', name: 'Surgery Department', category: 'Department', color: '#8b5cf6', x: 287, y: 422 },
-  { id: '3', name: 'Cardio-Pulmonary', category: 'Department', color: '#3b82f6', x: 822, y: 182 },
-  { id: '4', name: 'Neurology Department', category: 'Department', color: '#06b6d4', x: 561, y: 310 },
-  { id: '5', name: 'Pediatric Department', category: 'Department', color: '#ec4899', x: 563, y: 430 },
-  { id: '6', name: 'Cafeteria', category: 'Amenity', color: '#f59e0b', x: 850, y: 310 },
-  { id: '7', name: 'Doctors Clinic', category: 'Service', color: '#10b981', x: 848, y: 626 },
-  { id: '8', name: 'Orthopedic Department', category: 'Department', color: '#6366f1', x: 781, y: 431 },
-  { id: '9', name: 'Dermatology Department', category: 'Department', color: '#8b5cf6', x: 318, y: 92 },
-  { id: '10', name: 'Nephrology Department', category: 'Department', color: '#06b6d4', x: 205, y: 236 },
-  { id: '11', name: 'Ophthalmology Department', category: 'Department', color: '#6366f1', x: 354, y: 237 },
-  { id: '12', name: 'Radiology Department', category: 'Service', color: '#10b981', x: 870, y: 448 },
-  { id: '13', name: 'Diagnostic/Laboratory', category: 'Service', color: '#10b981', x: 797, y: 52 },
-  { id: '14', name: 'Restrooms', category: 'Amenity', color: '#f59e0b', x: 744, y: 310 },
+  { id: '1', name: 'Emergency Room', category: 'Emergency', color: '#ef4444', x: 1142, y: 1202 },
+  { id: '2', name: 'Surgery Department', category: 'Department', color: '#8b5cf6', x: 543, y: 799 },
+  { id: '3', name: 'Cardio-Pulmonary', category: 'Department', color: '#3b82f6', x: 1556, y: 345 },
+  { id: '4', name: 'Neurology Department', category: 'Department', color: '#06b6d4', x: 1062, y: 587 },
+  { id: '5', name: 'Pediatric Department', category: 'Department', color: '#ec4899', x: 1066, y: 814 },
+  { id: '6', name: 'Cafeteria', category: 'Amenity', color: '#f59e0b', x: 1609, y: 587 },
+  { id: '7', name: 'Doctors Clinic', category: 'Service', color: '#10b981', x: 1605, y: 1185 },
+  { id: '8', name: 'Orthopedic Department', category: 'Department', color: '#6366f1', x: 1478, y: 816 },
+  { id: '9', name: 'Dermatology Department', category: 'Department', color: '#8b5cf6', x: 602, y: 174 },
+  { id: '10', name: 'Nephrology Department', category: 'Department', color: '#06b6d4', x: 388, y: 447 },
+  { id: '11', name: 'Ophthalmology Department', category: 'Department', color: '#6366f1', x: 670, y: 449 },
+  { id: '12', name: 'Radiology Department', category: 'Service', color: '#10b981', x: 1647, y: 848 },
+  { id: '13', name: 'Diagnostic/Laboratory', category: 'Service', color: '#10b981', x: 1509, y: 98 },
+  { id: '14', name: 'Restrooms', category: 'Amenity', color: '#f59e0b', x: 1409, y: 587 },
 ];
 
 function gpsToPixel(lat: number, lng: number): { x: number; y: number; isOutside: boolean } {
   const { topLeft, bottomRight } = GPS_BOUNDARIES;
   
-  // Calculate relative position (can be outside 0-1 range if outside boundaries)
-  const relX = (lng - topLeft.lng) / (bottomRight.lng - topLeft.lng);
-  const relY = (lat - topLeft.lat) / (bottomRight.lat - topLeft.lat);
+  // Calculate the GPS ranges
+  const latRange = topLeft.lat - bottomRight.lat;  // Top has higher lat
+  const lngRange = topLeft.lng - bottomRight.lng;  // Handles any lng direction
   
-  // Check if user is within the actual building boundaries
-  const isOutside = lat > topLeft.lat || lat < bottomRight.lat || lng < topLeft.lng || lng > bottomRight.lng;
+  // Calculate relative position (0 to 1)
+  // For latitude: top of image = topLeft.lat, bottom = bottomRight.lat
+  const relY = (topLeft.lat - lat) / latRange;
+  // For longitude: left of image = topLeft.lng, right = bottomRight.lng  
+  const relX = (topLeft.lng - lng) / lngRange;
+  
+  // Check if user is within the building boundaries
+  const isOutside = relX < 0 || relX > 1 || relY < 0 || relY > 1;
   
   // Clamp the position to keep it within the visible map area (with some margin)
-  const margin = 0.05; // 5% margin from edges
+  const margin = 0.02; // 2% margin from edges
   const clampedX = Math.max(margin, Math.min(1 - margin, relX));
-  const clampedY = Math.max(margin, Math.min(1 - margin, Math.abs(relY)));
+  const clampedY = Math.max(margin, Math.min(1 - margin, relY));
   
   return {
     x: clampedX * FLOOR_PLAN_WIDTH,
@@ -99,6 +128,7 @@ export default function InteractiveMapGPS({ isDarkMode = false, fullScreen = fal
   const [simulationMode, setSimulationMode] = useState(false);
   const [rawGpsCoords, setRawGpsCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [compassEnabled, setCompassEnabled] = useState(false);
+  const [calibrationMode, setCalibrationMode] = useState(false);
   const watchIdRef = useRef<number | null>(null);
   const stageRef = useRef<Konva.Stage | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -591,15 +621,45 @@ export default function InteractiveMapGPS({ isDarkMode = false, fullScreen = fal
                 </div>
               )}
 
-              {/* GPS Coordinates Display */}
+              {/* GPS Coordinates Display - Enhanced for calibration */}
               {rawGpsCoords && (
-                <div className="bg-black/70 text-white px-3 py-2 rounded-lg text-xs">
-                  <div className="flex items-center gap-1">
+                <div className="bg-black/80 text-white px-3 py-2 rounded-lg text-xs">
+                  <div className="flex items-center gap-1 mb-1">
                     <span className={`w-2 h-2 rounded-full ${isUserOutside ? 'bg-orange-500' : 'bg-green-500'}`} />
-                    <span>{isUserOutside ? 'Outside' : 'Inside'}</span>
+                    <span className="font-medium">{isUserOutside ? 'Outside Building' : 'Inside Building'}</span>
                   </div>
-                  <div className="mt-1 font-mono text-[10px] opacity-80">
-                    {rawGpsCoords.lat.toFixed(6)}, {rawGpsCoords.lng.toFixed(6)}
+                  <div className="font-mono text-[10px] opacity-90 space-y-0.5">
+                    <div>Lat: {rawGpsCoords.lat.toFixed(6)}</div>
+                    <div>Lng: {rawGpsCoords.lng.toFixed(6)}</div>
+                  </div>
+                  {userPosition && (
+                    <div className="mt-1 pt-1 border-t border-white/20 font-mono text-[10px] opacity-70">
+                      <div>Pixel: ({Math.round(userPosition.x)}, {Math.round(userPosition.y)})</div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Calibration Mode Toggle */}
+              <button
+                onClick={() => setCalibrationMode(!calibrationMode)}
+                className={`px-3 py-2 rounded-full shadow-xl text-xs font-semibold transition-all flex items-center gap-2 ${
+                  calibrationMode 
+                    ? 'bg-red-500 text-white' 
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                🎯 {calibrationMode ? 'Calibrating...' : 'Calibrate'}
+              </button>
+
+              {/* Calibration Instructions */}
+              {calibrationMode && (
+                <div className="bg-yellow-500 text-black px-3 py-2 rounded-lg text-xs max-w-[200px]">
+                  <div className="font-bold mb-1">📍 Calibration Mode</div>
+                  <div className="text-[10px] leading-tight">
+                    1. Stand at a known location on your floor plan<br/>
+                    2. Note the GPS coordinates shown above<br/>
+                    3. Update GPS_BOUNDARIES in the code to match corners
                   </div>
                 </div>
               )}
@@ -650,7 +710,7 @@ export default function InteractiveMapGPS({ isDarkMode = false, fullScreen = fal
                     onTap={handleStageClick}
                   >
                     <Layer>
-                      <FloorPlanImage src="/HospitalFloorPlan.png" />
+                      <FloorPlanImage src={FLOOR_PLAN_IMAGE} />
                       
                       {/* Navigation path - draw line from user to destination */}
                       {userPosition && selectedLocation && (
