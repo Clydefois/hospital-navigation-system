@@ -18,16 +18,19 @@ A voice-powered hospital navigation app that helps patients and visitors find th
 ## Key Features
 
 ### 🎤 Voice Assistant
+
 - Say things like "Where is the emergency room?" or "I have a headache"
 - The AI understands 120+ keywords and responds with directions
 - Works in English
 
 ### 🗺️ GPS Navigation
+
 - Uses your phone's GPS to show your real-time location
 - Draws a walking path to your destination
 - Shows distance and estimated walking time
 
 ### 🏥 All Hospital Buildings Included
+
 - Emergency Room
 - Surgery, Pediatrics, Neurology, Cardiology
 - Radiology, Laboratory, Dermatology, Ophthalmology, Nephrology, Orthopedic
@@ -47,15 +50,15 @@ A voice-powered hospital navigation app that helps patients and visitors find th
 
 ## Technologies Used
 
-| What | Purpose |
-|------|---------|
-| **Next.js** | The web framework (makes the website work) |
-| **Leaflet + OpenStreetMap** | Interactive maps with GPS |
-| **Web Speech API** | Voice recognition (built into browsers) |
-| **Custom AI Model** | Understands symptoms and finds locations |
-| **Tailwind CSS** | Styling and design |
-| **Netlify** | Hosting the website online |
-| **Framer Motion** | Smooth animations |
+| What                        | Purpose                                    |
+| --------------------------- | ------------------------------------------ |
+| **Next.js**                 | The web framework (makes the website work) |
+| **Leaflet + OpenStreetMap** | Interactive maps with GPS                  |
+| **Web Speech API**          | Voice recognition (built into browsers)    |
+| **Custom AI Model**         | Understands symptoms and finds locations   |
+| **Tailwind CSS**            | Styling and design                         |
+| **Netlify**                 | Hosting the website online                 |
+| **Framer Motion**           | Smooth animations                          |
 
 ---
 
@@ -98,10 +101,10 @@ Developed for Zamboanga City Medical Center (CMZ) at Ateneo de Zamboanga Univers
 
 ## Quick Summary
 
-| Feature | How It Helps |
-|---------|--------------|
-| Voice commands | Hands-free navigation for patients |
-| GPS tracking | Know exactly where you are |
+| Feature             | How It Helps                                  |
+| ------------------- | --------------------------------------------- |
+| Voice commands      | Hands-free navigation for patients            |
+| GPS tracking        | Know exactly where you are                    |
 | AI symptom matching | Don't know where to go? Describe your problem |
-| Offline-capable map | Works even with slow internet |
-| Mobile-friendly | Works on any smartphone |
+| Offline-capable map | Works even with slow internet                 |
+| Mobile-friendly     | Works on any smartphone                       |
