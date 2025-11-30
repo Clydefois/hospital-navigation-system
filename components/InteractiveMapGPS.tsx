@@ -117,7 +117,8 @@ function FloorPlanImage({ src }: { src: string }) {
 export default function InteractiveMapGPS({ isDarkMode = false, fullScreen = false, selectedLocationId, onDistanceUpdate }: InteractiveMapGPSProps) {
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
   const [zoom, setZoom] = useState(1);
-  const [userPosition, setUserPosition] = useState<{ x: number; y: number } | null>(null);
+  // Default position set for simulation mode testing
+  const [userPosition, setUserPosition] = useState<{ x: number; y: number } | null>({ x: 600, y: 900 });
   const [isUserOutside, setIsUserOutside] = useState(false);
   const [userHeading, setUserHeading] = useState<number>(0);
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
@@ -125,7 +126,7 @@ export default function InteractiveMapGPS({ isDarkMode = false, fullScreen = fal
   const [isTracking, setIsTracking] = useState(false);
   const [containerWidth, setContainerWidth] = useState(FLOOR_PLAN_WIDTH);
   const [isPinching, setIsPinching] = useState(false);
-  const [simulationMode, setSimulationMode] = useState(false);
+  const [simulationMode, setSimulationMode] = useState(true); // Default ON for testing anywhere
   const [rawGpsCoords, setRawGpsCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [compassEnabled, setCompassEnabled] = useState(false);
   const [calibrationMode, setCalibrationMode] = useState(false);
@@ -564,13 +565,18 @@ export default function InteractiveMapGPS({ isDarkMode = false, fullScreen = fal
               {/* Simulation Mode Toggle */}
               <button
                 onClick={() => {
-                  setSimulationMode(!simulationMode);
-                  if (!simulationMode) {
+                  const newSimMode = !simulationMode;
+                  setSimulationMode(newSimMode);
+                  if (newSimMode) {
                     // When enabling simulation, set a default position if none exists
                     if (!userPosition) {
-                      setUserPosition({ x: FLOOR_PLAN_WIDTH / 2, y: FLOOR_PLAN_HEIGHT / 2 });
+                      setUserPosition({ x: 600, y: 900 });
                       setIsUserOutside(false);
                     }
+                    setGpsError(null);
+                  } else {
+                    // When disabling simulation, try to get real GPS
+                    startTracking();
                   }
                 }}
                 className={`px-3 py-2 rounded-full shadow-xl text-xs font-semibold transition-all flex items-center gap-2 ${
@@ -580,8 +586,16 @@ export default function InteractiveMapGPS({ isDarkMode = false, fullScreen = fal
                 }`}
               >
                 <MapPin className="w-4 h-4" />
-                {simulationMode ? 'Tap to Move' : 'Simulate Location'}
+                {simulationMode ? '📍 Tap Map to Move' : 'Use Real GPS'}
               </button>
+
+              {/* Simulation Mode Instructions */}
+              {simulationMode && (
+                <div className="bg-orange-500/90 text-white px-3 py-2 rounded-lg text-xs max-w-[180px]">
+                  <div className="font-bold">🧪 Test Mode</div>
+                  <div className="text-[10px] opacity-90">Tap anywhere on the map to set your location</div>
+                </div>
+              )}
 
               {/* Live GPS Status */}
               {isTracking && (
